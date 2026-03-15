@@ -1,0 +1,3 @@
+[workspace]
+members = ["crates/highuvlith-core", "crates/highuvlith-py"]
+resolver = "2"

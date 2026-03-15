@@ -1,0 +1,15 @@
+[package]
+name = "highuvlith-py"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "_native"
+crate-type = ["cdylib"]
+
+[dependencies]
+highuvlith-core = { path = "../highuvlith-core" }
+pyo3 = { version = "0.25", features = ["extension-module"] }
+numpy = "0.25"
+ndarray = "0.16"
+num = "0.4"

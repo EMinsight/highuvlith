@@ -1,0 +1,23 @@
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "highuvlith"
+version = "0.1.0"
+description = "VUV laser lithography simulation framework"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24"]
+
+[project.optional-dependencies]
+viz = ["matplotlib>=3.7"]
+hdf5 = ["h5py>=3.9"]
+dev = ["pytest>=7.0", "ruff>=0.4", "mypy>=1.10"]
+
+[tool.maturin]
+manifest-path = "crates/highuvlith-py/Cargo.toml"
+python-source = "python"
+module-name = "highuvlith._native"
+features = ["pyo3/extension-module"]
+python-packages = ["highuvlith"]

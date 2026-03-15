@@ -1,0 +1,55 @@
+# Rust build artifacts
+/target/
+
+# Python virtual environments
+/.venv/
+/venv/
+/.env/
+
+# Python bytecode & caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Compiled extensions (maturin develop outputs)
+*.so
+*.dylib
+*.dll
+*.pyd
+*.dSYM/
+
+# Python packaging artifacts
+*.egg-info/
+*.egg
+dist/
+build/
+wheels/
+*.whl
+
+# Rust intermediate artifacts
+*.rlib
+*.rmeta
+*.d
+
+# Testing & linting caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+
+# IDE & editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.iml
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Claude Code local settings
+.claude/

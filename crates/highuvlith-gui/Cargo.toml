@@ -1,0 +1,12 @@
+[package]
+name = "highuvlith-gui"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+highuvlith-core = { path = "../highuvlith-core" }
+eframe = "0.30"
+egui_plot = "0.30"
+serde = { version = "1.0", features = ["derive"] }
+num = "0.4"
+ndarray = "0.16"

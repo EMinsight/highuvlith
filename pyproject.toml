@@ -12,8 +12,14 @@ dependencies = ["numpy>=1.24"]
 
 [project.optional-dependencies]
 viz = ["matplotlib>=3.7"]
+interactive = ["plotly>=5.0", "polars>=1.0"]
+notebook = ["ipywidgets>=8.0"]
 hdf5 = ["h5py>=3.9"]
 dev = ["pytest>=7.0", "ruff>=0.4", "mypy>=1.10"]
+all = ["highuvlith[viz,interactive,notebook,hdf5]"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/python"]
 
 [tool.maturin]
 manifest-path = "crates/highuvlith-py/Cargo.toml"

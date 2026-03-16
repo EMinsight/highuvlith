@@ -1,5 +1,33 @@
 use serde::{Deserialize, Serialize};
 
+/// Trait for any illumination source.
+pub trait LithographySource: Send + Sync {
+    /// Center wavelength in nm.
+    fn wavelength_nm(&self) -> f64;
+
+    /// Photon energy in eV.
+    fn photon_energy_ev(&self) -> f64 {
+        1239.84193 / self.wavelength_nm()
+    }
+
+    /// Spectral bandwidth FWHM in pm.
+    fn bandwidth_pm(&self) -> f64;
+
+    /// Source intensity at normalized pupil coordinate.
+    fn intensity_at(&self, fx_norm: f64, fy_norm: f64) -> f64;
+
+    /// Spectral sampling weights for polychromatic simulation.
+    fn spectral_weights(&self) -> Vec<(f64, f64)>;
+
+    /// Photon density at dose=1 mJ/cm^2 (photons/nm^2).
+    /// Computed from wavelength: higher energy photons = fewer photons per unit dose.
+    fn photon_density_per_mj_cm2(&self) -> f64 {
+        let e_photon_j = 6.62607015e-34 * 2.99792458e8 / (self.wavelength_nm() * 1e-9);
+        // 1 mJ/cm^2 = 10 J/m^2; convert to photons/nm^2
+        10.0 / e_photon_j * 1e-18
+    }
+}
+
 /// Spatial coherence / illumination shape of the VUV source.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum IlluminationShape {
@@ -201,6 +229,25 @@ impl VuvSource {
         }
 
         weights
+    }
+}
+
+impl LithographySource for VuvSource {
+    fn wavelength_nm(&self) -> f64 {
+        self.wavelength_nm
+    }
+
+    fn bandwidth_pm(&self) -> f64 {
+        self.bandwidth_pm
+    }
+
+    fn intensity_at(&self, fx_norm: f64, fy_norm: f64) -> f64 {
+        // Delegate to inherent method via UFCS
+        VuvSource::intensity_at(self, fx_norm, fy_norm)
+    }
+
+    fn spectral_weights(&self) -> Vec<(f64, f64)> {
+        VuvSource::spectral_weights(self)
     }
 }
 

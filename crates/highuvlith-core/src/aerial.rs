@@ -1,12 +1,13 @@
 use ndarray::Array2;
 use num::Complex;
+#[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
 use crate::error::{LithographyError, Result};
 use crate::mask::Mask;
 use crate::math::fft2d::Fft2D;
-use crate::optics::ProjectionOptics;
-use crate::source::VuvSource;
+use crate::optics::OpticalSystem;
+use crate::source::LithographySource;
 use crate::types::{Complex64, Grid2D, GridConfig};
 
 /// Aerial image computation engine using Hopkins partially-coherent imaging
@@ -32,14 +33,14 @@ impl AerialImageEngine {
     /// This is the expensive initialization step. Once created, the engine
     /// can efficiently compute aerial images for different masks and defocus values.
     pub fn new(
-        source: &VuvSource,
-        optics: &ProjectionOptics,
+        source: &(impl LithographySource + ?Sized),
+        optics: &(impl OpticalSystem + ?Sized),
         grid: GridConfig,
         max_kernels: usize,
     ) -> Result<Self> {
         let fft = Fft2D::new();
-        let wavelength_nm = source.wavelength_nm;
-        let na = optics.na;
+        let wavelength_nm = source.wavelength_nm();
+        let na = optics.na();
 
         let tcc_kernels = compute_tcc_socs(source, optics, &grid, max_kernels, wavelength_nm)?;
 
@@ -52,7 +53,7 @@ impl AerialImageEngine {
             grid,
             wavelength_nm,
             na,
-            flare_fraction: optics.flare_fraction,
+            flare_fraction: optics.flare_fraction(),
             fft,
         })
     }
@@ -70,9 +71,40 @@ impl AerialImageEngine {
         let defocus_phase_grid = self.compute_defocus_phase(defocus_nm);
 
         // Parallel computation over SOCS kernels
+        #[cfg(feature = "parallel")]
         let partial_images: Vec<Array2<f64>> = self
             .tcc_kernels
             .par_iter()
+            .map(|(eigenvalue, kernel)| {
+                let fft = Fft2D::new(); // thread-local FFT
+                let mut product = Array2::zeros((n, n));
+
+                // Multiply mask spectrum by kernel (with defocus)
+                for i in 0..n {
+                    for j in 0..n {
+                        let defocus_mod = defocus_phase_grid[[i, j]];
+                        product[[i, j]] = mask_spectrum[[i, j]] * kernel[[i, j]] * defocus_mod;
+                    }
+                }
+
+                // IFFT to get coherent field
+                fft.inverse(&mut product);
+
+                // Square magnitude, weighted by eigenvalue
+                let mut intensity = Array2::zeros((n, n));
+                for i in 0..n {
+                    for j in 0..n {
+                        intensity[[i, j]] = eigenvalue * product[[i, j]].norm_sqr();
+                    }
+                }
+                intensity
+            })
+            .collect();
+
+        #[cfg(not(feature = "parallel"))]
+        let partial_images: Vec<Array2<f64>> = self
+            .tcc_kernels
+            .iter()
             .map(|(eigenvalue, kernel)| {
                 let fft = Fft2D::new(); // thread-local FFT
                 let mut product = Array2::zeros((n, n));
@@ -129,8 +161,8 @@ impl AerialImageEngine {
         &self,
         mask: &Mask,
         defocus_nm: f64,
-        source: &VuvSource,
-        optics: &ProjectionOptics,
+        source: &(impl LithographySource + ?Sized),
+        optics: &(impl OpticalSystem + ?Sized),
     ) -> Grid2D<f64> {
         let spectral_weights = source.spectral_weights();
 
@@ -144,7 +176,7 @@ impl AerialImageEngine {
         let mut total = Array2::zeros((n, n));
 
         for (wl, weight) in &spectral_weights {
-            let delta_pm = (wl - source.wavelength_nm) * 1000.0; // nm to pm
+            let delta_pm = (wl - source.wavelength_nm()) * 1000.0; // nm to pm
             let chromatic_defocus = optics.chromatic_defocus(delta_pm);
             let effective_defocus = defocus_nm + chromatic_defocus;
 
@@ -214,15 +246,15 @@ impl AerialImageEngine {
 /// We compute it as a 2D matrix indexed by frequency pairs, then eigendecompose
 /// to get the SOCS (Sum Of Coherent Systems) kernels.
 fn compute_tcc_socs(
-    source: &VuvSource,
-    optics: &ProjectionOptics,
+    source: &(impl LithographySource + ?Sized),
+    optics: &(impl OpticalSystem + ?Sized),
     grid: &GridConfig,
     max_kernels: usize,
     wavelength_nm: f64,
 ) -> Result<Vec<(f64, Array2<Complex64>)>> {
     let n = grid.size;
     let freq_step = grid.freq_step();
-    let cutoff = optics.na / wavelength_nm;
+    let cutoff = optics.na() / wavelength_nm;
 
     // Collect in-pupil frequency indices
     let mut freq_indices: Vec<(usize, usize, f64, f64)> = Vec::new();
@@ -311,7 +343,7 @@ fn compute_tcc_socs(
 
 /// Generate source sampling points: (fx, fy, weight).
 /// Uses a grid of points within the source shape.
-fn generate_source_samples(source: &VuvSource, cutoff: f64) -> Vec<(f64, f64, f64)> {
+fn generate_source_samples(source: &(impl LithographySource + ?Sized), cutoff: f64) -> Vec<(f64, f64, f64)> {
     let n_samples = 31; // per dimension
     let step = 2.0 * cutoff / n_samples as f64;
     let mut samples = Vec::new();
@@ -437,6 +469,8 @@ fn power_iteration(
 mod tests {
     use super::*;
     use approx::assert_relative_eq;
+    use crate::optics::ProjectionOptics;
+    use crate::source::VuvSource;
 
     fn make_test_engine(sigma: f64, na: f64) -> AerialImageEngine {
         let source = VuvSource {

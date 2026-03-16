@@ -1,0 +1,22 @@
+# Example VUV lithography simulation configuration
+
+[source]
+wavelength_nm = 157.63  # F2 excimer laser
+sigma = 0.7
+bandwidth_pm = 1.1
+
+[optics]
+na = 0.75
+flare_fraction = 0.02
+
+[mask]
+cd_nm = 65.0
+pitch_nm = 180.0
+
+[grid]
+size = 256
+pixel_nm = 1.0
+
+[process]
+dose_mj_cm2 = 30.0
+focus_nm = 0.0

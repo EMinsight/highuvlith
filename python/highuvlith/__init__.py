@@ -15,6 +15,13 @@ from highuvlith._native import (
     ProcessWindowResult,
 )
 
+from highuvlith.api import (
+    FullResult,
+    simulate_line_space,
+    simulate_contact_hole,
+    sweep_focus,
+)
+
 __version__ = "0.1.0"
 
 __all__ = [
@@ -33,4 +40,9 @@ __all__ = [
     "AerialImageResult",
     "ResistProfileResult",
     "ProcessWindowResult",
+    # High-level API
+    "FullResult",
+    "simulate_line_space",
+    "simulate_contact_hole",
+    "sweep_focus",
 ]

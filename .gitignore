@@ -1,55 +1,144 @@
-# Rust build artifacts
+# ============================================================
+# Rust
+# ============================================================
+
+# Cargo build output (debug, release, bench, all targets)
 /target/
 
-# Python virtual environments
+# Intermediate compiler artifacts
+*.rlib
+*.rmeta
+
+# ============================================================
+# Python
+# ============================================================
+
+# Virtual environments (any naming convention)
 /.venv/
 /venv/
 /.env/
+/env/
+.python-version
 
-# Python bytecode & caches
+# Bytecode & caches
 __pycache__/
 *.py[cod]
 *$py.class
 
-# Compiled extensions (maturin develop outputs)
+# Packaging artifacts
+*.egg-info/
+*.egg
+/dist/
+/build/
+/wheels/
+*.whl
+/sdist/
+
+# ============================================================
+# Compiled extensions (maturin develop / pip install -e)
+# ============================================================
+
 *.so
 *.dylib
 *.dll
 *.pyd
 *.dSYM/
 
-# Python packaging artifacts
-*.egg-info/
-*.egg
-dist/
-build/
-wheels/
-*.whl
+# ============================================================
+# Generated / large binary outputs
+# ============================================================
 
-# Rust intermediate artifacts
-*.rlib
-*.rmeta
-*.d
+# Demo videos produced by examples/generate_demo.py
+examples/*.mp4
+examples/*.webm
+examples/*.avi
+examples/*.mkv
+examples/*.gif
 
-# Testing & linting caches
+# Exported simulation images
+*.exr
+
+# ============================================================
+# Testing, linting, coverage
+# ============================================================
+
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .coverage
+.coverage.*
 htmlcov/
 .tox/
+.nox/
+coverage.xml
+*.gcda
+*.gcno
+*.profraw
+*.profdata
 
+# Cargo fuzz corpus and artifacts
+/fuzz/artifacts/
+/fuzz/corpus/
+
+# Criterion benchmark output
+/target/criterion/
+
+# ============================================================
 # IDE & editor files
+# ============================================================
+
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
 *.iml
+*.sublime-workspace
+*.sublime-project
+.project
+.classpath
+.settings/
+tags
+TAGS
 
+# ============================================================
 # OS metadata
+# ============================================================
+
 .DS_Store
+._*
 Thumbs.db
+Desktop.ini
+
+# ============================================================
+# Tool-specific local config
+# ============================================================
 
 # Claude Code local settings
 .claude/
+
+# Trunk (WASM bundler) output
+/crates/highuvlith-gui/dist/
+/web/dist/
+/web/pkg/
+
+# wasm-pack output
+/pkg/
+
+# Node.js (if web frontend is added)
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# ============================================================
+# Secrets & credentials (never commit)
+# ============================================================
+
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+secrets.toml

@@ -1,4 +1,5 @@
 use ndarray::Array2;
+#[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -179,13 +180,25 @@ pub fn batch_defocus(
     mask: &Mask,
     focuses: &[f64],
 ) -> Vec<(f64, Array2<f64>)> {
-    focuses
+    #[cfg(feature = "parallel")]
+    let result = focuses
         .par_iter()
         .map(|&focus| {
             let image = engine.compute(mask, focus);
             (focus, image.data)
         })
-        .collect()
+        .collect();
+
+    #[cfg(not(feature = "parallel"))]
+    let result = focuses
+        .iter()
+        .map(|&focus| {
+            let image = engine.compute(mask, focus);
+            (focus, image.data)
+        })
+        .collect();
+
+    result
 }
 
 #[cfg(test)]

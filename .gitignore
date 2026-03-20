@@ -9,6 +9,12 @@
 *.rlib
 *.rmeta
 
+# Rust temporary files
+rustc-ice-*.txt
+
+# Cargo-generated lockfiles in libraries (keep in binaries)
+# Cargo.lock  # Already committed, so commenting this pattern
+
 # ============================================================
 # Python
 # ============================================================
@@ -18,12 +24,15 @@
 /venv/
 /.env/
 /env/
+/site-packages/
 .python-version
 
 # Bytecode & caches
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyc
+*.pyo
 
 # Packaging artifacts
 *.egg-info/
@@ -33,6 +42,23 @@ __pycache__/
 /wheels/
 *.whl
 /sdist/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# IPython
+profile_default/
+ipython_config.py
+
+# Data & scientific computing temporary files
+*.npy
+*.npz
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+*.joblib
 
 # ============================================================
 # Compiled extensions (maturin develop / pip install -e)
@@ -140,5 +166,60 @@ pnpm-lock.yaml
 !.env.example
 *.pem
 *.key
+*.crt
+*.cert
+*.p12
 credentials.json
 secrets.toml
+config.json
+auth.json
+
+# ============================================================
+# Documentation & temporary files
+# ============================================================
+
+# Generated docs
+/docs/_build/
+/docs/.buildinfo
+/docs/.doctrees/
+
+# Backup and temporary files
+*.bak
+*.backup
+*.tmp
+*.temp
+*~
+*.orig
+*.rej
+
+# Logs
+*.log
+*.logs
+/logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ============================================================
+# Performance & profiling
+# ============================================================
+
+# Flamegraph output
+flamegraph.svg
+perf.data
+perf.data.old
+
+# Memory profiling
+*.heaptrack
+massif.out.*
+
+# ============================================================
+# Git & version control
+# ============================================================
+
+# Git patches
+*.patch
+*.diff
+
+# SVN (if legacy files exist)
+.svn/

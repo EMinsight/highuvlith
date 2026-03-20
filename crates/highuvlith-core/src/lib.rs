@@ -9,6 +9,7 @@ pub mod mask;
 pub mod materials;
 pub mod math;
 pub mod metrics;
+pub mod mnsl;
 pub mod opc;
 pub mod optics;
 pub mod process;

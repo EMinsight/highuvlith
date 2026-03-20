@@ -6,6 +6,7 @@ use rayon::prelude::*;
 use crate::error::{LithographyError, Result};
 use crate::mask::Mask;
 use crate::math::fft2d::Fft2D;
+use crate::mnsl::{MnslConfig, MnslEngine, MnslResult};
 use crate::optics::OpticalSystem;
 use crate::source::LithographySource;
 use crate::types::{Complex64, Grid2D, GridConfig};
@@ -201,6 +202,18 @@ impl AerialImageEngine {
     /// Grid configuration.
     pub fn grid(&self) -> &GridConfig {
         &self.grid
+    }
+
+    /// Compute MNSL (Moiré Nanosphere Lithographic Reflection) emission pattern.
+    ///
+    /// Integrates MNSL simulation with the aerial image engine's existing
+    /// capabilities, leveraging the engine's grid configuration and optical setup.
+    pub fn compute_mnsl(&self, config: &MnslConfig) -> MnslResult {
+        // Create MNSL engine with our grid configuration
+        let engine = MnslEngine::new(config.clone(), self.grid.clone());
+
+        // Compute the MNSL emission pattern
+        engine.compute_emission()
     }
 
     fn compute_defocus_phase(&self, defocus_nm: f64) -> Array2<Complex64> {

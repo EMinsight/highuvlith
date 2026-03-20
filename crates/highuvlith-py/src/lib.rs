@@ -1,11 +1,13 @@
 use pyo3::prelude::*;
 
 mod py_config;
+mod py_mnsl;
 mod py_results;
 mod py_simulation;
 mod py_sweep;
 
 use py_config::*;
+use py_mnsl::*;
 use py_results::*;
 use py_simulation::*;
 use py_sweep::*;
@@ -32,6 +34,9 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Batch / sweep
     m.add_class::<PyBatchSimulator>()?;
     m.add_class::<PyProcessWindowResult>()?;
+
+    // MNSL module
+    register_mnsl_module(&m)?;
 
     Ok(())
 }

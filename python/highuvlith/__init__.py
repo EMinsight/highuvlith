@@ -13,6 +13,14 @@ from highuvlith._native import (
     ResistProfileResult,
     BatchSimulator,
     ProcessWindowResult,
+    # MNSL classes
+    PyMnslConfig as MnslConfig,
+    PyMnslEngine as MnslEngine,
+    PyMnslResult as MnslResult,
+    PyNanosphereArrayConfig as NanosphereArrayConfig,
+    PySpherePacking as SpherePacking,
+    PySubstrateCoupling as SubstrateCoupling,
+    py_simulate_moire_emission,
 )
 
 from highuvlith.api import (
@@ -20,6 +28,15 @@ from highuvlith.api import (
     simulate_line_space,
     simulate_contact_hole,
     sweep_focus,
+)
+
+from highuvlith.mnsl import (
+    MnslSimResult,
+    simulate_moire_emission,
+    create_nanosphere_array,
+    sweep_rotation_angle,
+    sweep_separation,
+    optimize_moire_parameters,
 )
 
 __version__ = "0.1.0"
@@ -45,4 +62,19 @@ __all__ = [
     "simulate_line_space",
     "simulate_contact_hole",
     "sweep_focus",
+    # MNSL Configuration
+    "MnslConfig",
+    "MnslEngine",
+    "MnslResult",
+    "NanosphereArrayConfig",
+    "SpherePacking",
+    "SubstrateCoupling",
+    "py_simulate_moire_emission",
+    # MNSL High-level API
+    "MnslSimResult",
+    "simulate_moire_emission",
+    "create_nanosphere_array",
+    "sweep_rotation_angle",
+    "sweep_separation",
+    "optimize_moire_parameters",
 ]

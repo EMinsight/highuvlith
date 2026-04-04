@@ -6,6 +6,8 @@
 use ndarray::Array2;
 use serde::{Deserialize, Serialize};
 
+use crate::error::LithographyError;
+
 /// Block copolymer morphology.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DSAMorphology {
@@ -35,20 +37,27 @@ pub struct DSAParams {
 
 impl DSAParams {
     /// Create parameters for PS-b-PMMA lamellar DSA.
-    pub fn ps_pmma_lamellar(l0_nm: f64) -> Self {
-        Self {
+    pub fn ps_pmma_lamellar(l0_nm: f64) -> crate::error::Result<Self> {
+        if l0_nm.is_nan() || l0_nm <= 0.0 {
+            return Err(crate::error::LithographyError::InvalidParameter {
+                name: "l0_nm",
+                value: if l0_nm.is_nan() { f64::NAN } else { l0_nm },
+                reason: "must be positive",
+            });
+        }
+        Ok(Self {
             l0_nm,
             chi_n: 20.0, // typical for PS-b-PMMA
             volume_fraction: 0.5,
             morphology: DSAMorphology::Lamellar,
             interface_width_nm: l0_nm / 10.0, // ~10% of period
-        }
+        })
     }
 }
 
 impl Default for DSAParams {
     fn default() -> Self {
-        Self::ps_pmma_lamellar(28.0)
+        Self::ps_pmma_lamellar(28.0).expect("default L0 28nm is valid")
     }
 }
 
@@ -86,7 +95,7 @@ pub fn simulate_dsa_1d(
     template_pattern: &[f64],
     x_nm: &[f64],
     params: &DSAParams,
-) -> DSAResult {
+) -> crate::error::Result<DSAResult> {
     let n = template_pattern.len();
     let mut pattern = vec![0.0; n];
 
@@ -122,20 +131,20 @@ pub fn simulate_dsa_1d(
 
     let assembled_cd = params.l0_nm * params.volume_fraction;
 
-    DSAResult {
-        pattern: Array2::from_shape_vec((1, n), pattern).unwrap(),
+    let pattern_array = Array2::from_shape_vec((1, n), pattern).map_err(|e| {
+        LithographyError::InternalError(format!("DSA 1D pattern shape error: {}", e))
+    })?;
+
+    Ok(DSAResult {
+        pattern: pattern_array,
         defect_density,
         is_defect_free: defect_density < 1.0,
         assembled_cd_nm: assembled_cd,
-    }
+    })
 }
 
 /// Simulate DSA on a 2D template (for contact hole shrink or line/space).
-pub fn simulate_dsa_2d(
-    template: &Array2<f64>,
-    pixel_nm: f64,
-    params: &DSAParams,
-) -> DSAResult {
+pub fn simulate_dsa_2d(template: &Array2<f64>, pixel_nm: f64, params: &DSAParams) -> DSAResult {
     let (ny, nx) = template.dim();
     let mut pattern = Array2::zeros((ny, nx));
 
@@ -151,7 +160,8 @@ pub fn simulate_dsa_2d(
                 }
                 DSAMorphology::Cylindrical => {
                     // Hexagonal array of cylinders
-                    let r_cyl = params.l0_nm * params.volume_fraction.sqrt() / std::f64::consts::PI.sqrt();
+                    let r_cyl =
+                        params.l0_nm * params.volume_fraction.sqrt() / std::f64::consts::PI.sqrt();
                     let pitch = params.l0_nm;
                     let hex_y = pitch * (3.0_f64).sqrt() / 2.0;
 
@@ -165,7 +175,8 @@ pub fn simulate_dsa_2d(
                 }
                 DSAMorphology::Spherical => {
                     // BCC spheres (simplified as cubic array)
-                    let r_sph = params.l0_nm * (3.0 * params.volume_fraction / (4.0 * std::f64::consts::PI)).cbrt();
+                    let r_sph = params.l0_nm
+                        * (3.0 * params.volume_fraction / (4.0 * std::f64::consts::PI)).cbrt();
                     let pitch = params.l0_nm;
                     let cx = (x / pitch).round() * pitch;
                     let cy = (y / pitch).round() * pitch;
@@ -202,19 +213,22 @@ mod tests {
 
     #[test]
     fn test_dsa_1d_basic() {
-        let params = DSAParams::ps_pmma_lamellar(28.0);
+        let params = DSAParams::ps_pmma_lamellar(28.0).unwrap();
         let n = 256;
         let x_nm: Vec<f64> = (0..n).map(|i| i as f64 * 1.0).collect();
-        let template: Vec<f64> = x_nm.iter().map(|&x| if (x / 56.0) as i64 % 2 == 0 { 1.0 } else { 0.0 }).collect();
+        let template: Vec<f64> = x_nm
+            .iter()
+            .map(|&x| if (x / 56.0) as i64 % 2 == 0 { 1.0 } else { 0.0 })
+            .collect();
 
-        let result = simulate_dsa_1d(&template, &x_nm, &params);
+        let result = simulate_dsa_1d(&template, &x_nm, &params).unwrap();
         assert_eq!(result.pattern.ncols(), n);
         assert!(result.assembled_cd_nm > 0.0);
     }
 
     #[test]
     fn test_dsa_2d_lamellar() {
-        let params = DSAParams::ps_pmma_lamellar(28.0);
+        let params = DSAParams::ps_pmma_lamellar(28.0).unwrap();
         let template = Array2::ones((64, 64));
         let result = simulate_dsa_2d(&template, 2.0, &params);
         assert_eq!(result.pattern.dim(), (64, 64));
@@ -224,7 +238,7 @@ mod tests {
     fn test_dsa_2d_cylindrical() {
         let params = DSAParams {
             morphology: DSAMorphology::Cylindrical,
-            ..DSAParams::ps_pmma_lamellar(28.0)
+            ..DSAParams::ps_pmma_lamellar(28.0).unwrap()
         };
         let template = Array2::ones((64, 64));
         let result = simulate_dsa_2d(&template, 2.0, &params);
@@ -233,5 +247,30 @@ mod tests {
         let has_ones = result.pattern.iter().any(|&v| v > 0.5);
         let has_zeros = result.pattern.iter().any(|&v| v < 0.5);
         assert!(has_ones && has_zeros);
+    }
+
+    #[test]
+    fn test_invalid_l0_zero() {
+        assert!(DSAParams::ps_pmma_lamellar(0.0).is_err());
+        assert!(DSAParams::ps_pmma_lamellar(-5.0).is_err());
+        assert!(DSAParams::ps_pmma_lamellar(f64::NAN).is_err());
+    }
+
+    #[test]
+    fn test_dsa_2d_spherical() {
+        let params = DSAParams {
+            morphology: DSAMorphology::Spherical,
+            ..DSAParams::ps_pmma_lamellar(28.0).unwrap()
+        };
+        let template = Array2::ones((64, 64));
+        let result = simulate_dsa_2d(&template, 2.0, &params);
+        assert_eq!(result.pattern.dim(), (64, 64));
+        // Spherical morphology should produce discrete sphere regions (1.0) and matrix (0.0)
+        let has_ones = result.pattern.iter().any(|&v| v > 0.5);
+        let has_zeros = result.pattern.iter().any(|&v| v < 0.5);
+        assert!(
+            has_ones && has_zeros,
+            "Spherical DSA should produce both sphere and matrix regions"
+        );
     }
 }

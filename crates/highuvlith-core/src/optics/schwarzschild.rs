@@ -50,14 +50,21 @@ impl SchwarzschildObjective {
     }
 
     /// Create for soft X-ray at ~1nm.
-    pub fn soft_xray(na: f64) -> Self {
-        Self {
+    pub fn soft_xray(na: f64) -> crate::error::Result<Self> {
+        if na.is_nan() || na <= 0.0 || na >= 1.0 {
+            return Err(crate::error::LithographyError::InvalidParameter {
+                name: "numerical_aperture",
+                value: if na.is_nan() { f64::NAN } else { na },
+                reason: "must be in range (0, 1) and not NaN",
+            });
+        }
+        Ok(Self {
             numerical_aperture: na,
             obscuration_ratio: 0.3,
-            reduction_ratio: 1.0, // typically 1:1 for X-ray microscopy
+            reduction_ratio: 1.0,     // typically 1:1 for X-ray microscopy
             mirror_reflectivity: 0.3, // grazing-incidence or multilayer
             flare: 0.05,
-        }
+        })
     }
 
     /// Two-mirror system transmission: R².
@@ -90,8 +97,12 @@ impl super::OpticalSystem for SchwarzschildObjective {
         let transmission = self.system_transmission().sqrt();
 
         // Defocus phase
-        let defocus_phase = std::f64::consts::PI * defocus_nm * rho * rho
-            * self.numerical_aperture * self.numerical_aperture
+        let defocus_phase = std::f64::consts::PI
+            * defocus_nm
+            * rho
+            * rho
+            * self.numerical_aperture
+            * self.numerical_aperture
             / wavelength_nm;
 
         Complex::from_polar(transmission, defocus_phase)
@@ -159,5 +170,15 @@ mod tests {
         let res = obj.rayleigh_resolution(13.5);
         // 0.61 × 13.5 / 0.33 ≈ 24.9nm
         assert_relative_eq!(res, 24.9, epsilon = 0.5);
+    }
+
+    #[test]
+    fn test_soft_xray_invalid_na() {
+        assert!(SchwarzschildObjective::soft_xray(0.0).is_err());
+        assert!(SchwarzschildObjective::soft_xray(-0.1).is_err());
+        assert!(SchwarzschildObjective::soft_xray(1.0).is_err());
+        assert!(SchwarzschildObjective::soft_xray(f64::NAN).is_err());
+        // Valid NA should succeed
+        assert!(SchwarzschildObjective::soft_xray(0.15).is_ok());
     }
 }

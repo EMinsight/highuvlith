@@ -3,8 +3,8 @@ use pyo3::prelude::*;
 use pyo3::types::PyList;
 
 use highuvlith_core::mnsl::{
-    MnslConfig, MnslEngine, MnslResult, NanosphereArray, SpherePacking, SubstrateCoupling,
-    simulate_moire_emission,
+    simulate_moire_emission, MnslConfig, MnslEngine, MnslResult, NanosphereArray, SpherePacking,
+    SubstrateCoupling,
 };
 use highuvlith_core::thinfilm::FilmStack;
 use highuvlith_core::types::GridConfig;
@@ -19,13 +19,19 @@ pub struct PySpherePacking {
 #[pymethods]
 impl PySpherePacking {
     #[classattr]
-    const HCP: Self = Self { inner: SpherePacking::HCP };
+    const HCP: Self = Self {
+        inner: SpherePacking::HCP,
+    };
 
     #[classattr]
-    const FCC: Self = Self { inner: SpherePacking::FCC };
+    const FCC: Self = Self {
+        inner: SpherePacking::FCC,
+    };
 
     #[classattr]
-    const SIMPLE_CUBIC: Self = Self { inner: SpherePacking::SimpleCubic };
+    const SIMPLE_CUBIC: Self = Self {
+        inner: SpherePacking::SimpleCubic,
+    };
 
     fn __repr__(&self) -> String {
         match self.inner {
@@ -54,9 +60,27 @@ impl PyNanosphereArrayConfig {
         n_real: f64,
         n_imag: f64,
         packing: Option<PySpherePacking>,
-    ) -> Self {
+    ) -> PyResult<Self> {
+        if diameter_nm <= 0.0 {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "diameter_nm must be positive, got {}",
+                diameter_nm
+            )));
+        }
+        if pitch_nm <= 0.0 {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "pitch_nm must be positive, got {}",
+                pitch_nm
+            )));
+        }
+        if pitch_nm < diameter_nm {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "pitch_nm ({}) must be >= diameter_nm ({})",
+                pitch_nm, diameter_nm
+            )));
+        }
         let packing_inner = packing.map(|p| p.inner).unwrap_or(SpherePacking::HCP);
-        Self {
+        Ok(Self {
             inner: NanosphereArray {
                 diameter_nm,
                 pitch_nm,
@@ -65,7 +89,7 @@ impl PyNanosphereArrayConfig {
                 n_imag,
                 packing: packing_inner,
             },
-        }
+        })
     }
 
     /// Create silica nanosphere array with typical VUV optical constants.
@@ -158,14 +182,20 @@ pub struct PySubstrateCoupling {
 impl PySubstrateCoupling {
     #[new]
     #[pyo3(signature = (coupling_strength=0.5, enable_nearfield=true))]
-    fn new(coupling_strength: f64, enable_nearfield: bool) -> Self {
-        Self {
+    fn new(coupling_strength: f64, enable_nearfield: bool) -> PyResult<Self> {
+        if !(0.0..=1.0).contains(&coupling_strength) {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "coupling_strength must be in [0, 1], got {}",
+                coupling_strength
+            )));
+        }
+        Ok(Self {
             inner: SubstrateCoupling {
                 substrate_stack: FilmStack::default(),
                 coupling_strength,
                 enable_nearfield,
             },
-        }
+        })
     }
 
     #[getter]
@@ -387,7 +417,9 @@ impl PyMnslResult {
     fn __repr__(&self) -> String {
         format!(
             "MnslResult(period={:.1}nm, peak_enhancement={:.2}x, {} peaks)",
-            self.inner.moire_period_nm, self.inner.peak_enhancement, self.inner.peak_positions.len()
+            self.inner.moire_period_nm,
+            self.inner.peak_enhancement,
+            self.inner.peak_positions.len()
         )
     }
 }

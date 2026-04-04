@@ -24,7 +24,7 @@ impl ZonePlateEfficiency {
     fn first_order_efficiency(&self) -> f64 {
         match self {
             Self::Binary => 1.0 / (std::f64::consts::PI * std::f64::consts::PI), // 1/π² ≈ 10.1%
-            Self::Phase => 4.0 / (std::f64::consts::PI * std::f64::consts::PI), // 4/π² ≈ 40.5%
+            Self::Phase => 4.0 / (std::f64::consts::PI * std::f64::consts::PI),  // 4/π² ≈ 40.5%
             Self::Blazed { efficiency } => *efficiency,
         }
     }
@@ -53,7 +53,24 @@ pub struct FresnelZonePlate {
 
 impl FresnelZonePlate {
     /// Create a zone plate for a given resolution and wavelength.
-    pub fn new(outermost_zone_width_nm: f64, design_wavelength_nm: f64) -> Self {
+    pub fn new(
+        outermost_zone_width_nm: f64,
+        design_wavelength_nm: f64,
+    ) -> crate::error::Result<Self> {
+        if outermost_zone_width_nm.is_nan() || outermost_zone_width_nm <= 0.0 {
+            return Err(crate::error::LithographyError::InvalidParameter {
+                name: "outermost_zone_width_nm",
+                value: outermost_zone_width_nm,
+                reason: "must be positive",
+            });
+        }
+        if design_wavelength_nm.is_nan() || design_wavelength_nm <= 0.0 {
+            return Err(crate::error::LithographyError::InvalidParameter {
+                name: "design_wavelength_nm",
+                value: design_wavelength_nm,
+                reason: "must be positive",
+            });
+        }
         // Number of zones: N = r_N / Δr_N, where r_N² = N × λ × f
         // For given Δr_N and λ: f = (2 × Δr_N)² / λ (from NA = λ/(2×Δr_N))
         // r_N = N × Δr_N, so N = r_N / Δr_N
@@ -65,14 +82,14 @@ impl FresnelZonePlate {
             .sqrt()
             .ceil() as usize;
 
-        Self {
+        Ok(Self {
             outermost_zone_width_nm,
             num_zones: num_zones.max(10),
             design_wavelength_nm,
             efficiency: ZonePlateEfficiency::Phase,
             central_stop_fraction: 0.0,
             reduction_ratio: 1.0,
-        }
+        })
     }
 
     /// Focal length in nm: f = r_N² / (N × λ).
@@ -119,14 +136,12 @@ impl super::OpticalSystem for FresnelZonePlate {
 
         // Defocus phase (same as refractive optics)
         let na = self.na();
-        let defocus_phase =
-            std::f64::consts::PI * defocus_nm * rho * rho * na * na / wavelength_nm;
+        let defocus_phase = std::f64::consts::PI * defocus_nm * rho * rho * na * na / wavelength_nm;
 
         // Zone plate introduces additional chromatic phase error
         // when operating off-design wavelength
         let chromatic_phase = if (wavelength_nm - self.design_wavelength_nm).abs() > 1e-6 {
-            let delta_f = self.focal_length_nm()
-                * (wavelength_nm - self.design_wavelength_nm)
+            let delta_f = self.focal_length_nm() * (wavelength_nm - self.design_wavelength_nm)
                 / self.design_wavelength_nm;
             std::f64::consts::PI * delta_f * rho * rho * na * na / wavelength_nm
         } else {
@@ -168,14 +183,14 @@ mod tests {
     #[test]
     fn test_zone_plate_na() {
         // 25nm outermost zone at 1nm wavelength: NA = 1/(2×25) = 0.02
-        let zp = FresnelZonePlate::new(25.0, 1.0);
+        let zp = FresnelZonePlate::new(25.0, 1.0).unwrap();
         assert_relative_eq!(zp.na(), 0.02, epsilon = 0.001);
     }
 
     #[test]
     fn test_zone_plate_resolution() {
         // Resolution ≈ outermost zone width
-        let zp = FresnelZonePlate::new(15.0, 0.5);
+        let zp = FresnelZonePlate::new(15.0, 0.5).unwrap();
         let res = zp.rayleigh_resolution(0.5);
         // Rayleigh = 0.61 × λ / NA = 0.61 × 0.5 / (0.5/(2×15)) = 0.61 × 0.5 / 0.0167 ≈ 18.3
         // This should be close to the outermost zone width
@@ -188,21 +203,21 @@ mod tests {
 
     #[test]
     fn test_pupil_inside() {
-        let zp = FresnelZonePlate::new(25.0, 1.0);
+        let zp = FresnelZonePlate::new(25.0, 1.0).unwrap();
         let p = zp.pupil_function(0.5, 0.0, 0.0, 1.0);
         assert!(p.norm() > 0.0, "Pupil should transmit inside aperture");
     }
 
     #[test]
     fn test_pupil_outside() {
-        let zp = FresnelZonePlate::new(25.0, 1.0);
+        let zp = FresnelZonePlate::new(25.0, 1.0).unwrap();
         let p = zp.pupil_function(1.5, 0.0, 0.0, 1.0);
         assert_relative_eq!(p.norm(), 0.0, epsilon = 1e-10);
     }
 
     #[test]
     fn test_central_stop() {
-        let mut zp = FresnelZonePlate::new(25.0, 1.0);
+        let mut zp = FresnelZonePlate::new(25.0, 1.0).unwrap();
         zp.central_stop_fraction = 0.3;
         let p_center = zp.pupil_function(0.1, 0.0, 0.0, 1.0);
         let p_edge = zp.pupil_function(0.5, 0.0, 0.0, 1.0);
@@ -212,7 +227,7 @@ mod tests {
 
     #[test]
     fn test_strong_chromatic_aberration() {
-        let zp = FresnelZonePlate::new(25.0, 1.0);
+        let zp = FresnelZonePlate::new(25.0, 1.0).unwrap();
         // Zone plates: Δf/f = Δλ/λ, so chromatic defocus is very large
         let chrom = zp.chromatic_defocus(1.0); // 1 pm offset
         assert!(
@@ -233,5 +248,26 @@ mod tests {
             0.405,
             epsilon = 0.01
         );
+    }
+
+    #[test]
+    fn test_invalid_zero_zone_width() {
+        assert!(FresnelZonePlate::new(0.0, 157.0).is_err());
+        assert!(FresnelZonePlate::new(-5.0, 157.0).is_err());
+        assert!(FresnelZonePlate::new(f64::NAN, 157.0).is_err());
+        // Invalid wavelength
+        assert!(FresnelZonePlate::new(25.0, 0.0).is_err());
+        assert!(FresnelZonePlate::new(25.0, -1.0).is_err());
+    }
+
+    #[test]
+    fn test_zone_plate_focal_length() {
+        let zp = FresnelZonePlate::new(25.0, 1.0).unwrap();
+        let f = zp.focal_length_nm();
+        // f = r_N^2 / (N * lambda)
+        // r_N = N * dr_N, so f = N * dr_N^2 / lambda
+        let expected_f = zp.num_zones as f64 * 25.0 * 25.0 / 1.0;
+        assert_relative_eq!(f, expected_f, epsilon = 1e-6);
+        assert!(f > 0.0, "Focal length must be positive");
     }
 }

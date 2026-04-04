@@ -356,7 +356,10 @@ fn compute_tcc_socs(
 
 /// Generate source sampling points: (fx, fy, weight).
 /// Uses a grid of points within the source shape.
-fn generate_source_samples(source: &(impl LithographySource + ?Sized), cutoff: f64) -> Vec<(f64, f64, f64)> {
+fn generate_source_samples(
+    source: &(impl LithographySource + ?Sized),
+    cutoff: f64,
+) -> Vec<(f64, f64, f64)> {
     let n_samples = 31; // per dimension
     let step = 2.0 * cutoff / n_samples as f64;
     let mut samples = Vec::new();
@@ -429,7 +432,7 @@ fn eigendecompose_hermitian(
     }
 
     // Sort by decreasing |eigenvalue|
-    results.sort_by(|a, b| b.0.abs().partial_cmp(&a.0.abs()).unwrap());
+    results.sort_by(|a, b| b.0.abs().total_cmp(&a.0.abs()));
     results
 }
 
@@ -481,16 +484,16 @@ fn power_iteration(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use approx::assert_relative_eq;
     use crate::optics::ProjectionOptics;
     use crate::source::VuvSource;
+    use approx::assert_relative_eq;
 
     fn make_test_engine(sigma: f64, na: f64) -> AerialImageEngine {
         let source = VuvSource {
             illumination: crate::source::IlluminationShape::Conventional { sigma },
-            ..VuvSource::f2_laser(sigma)
+            ..VuvSource::f2_laser(sigma).unwrap()
         };
-        let optics = ProjectionOptics::new(na);
+        let optics = ProjectionOptics::new(na).unwrap();
         let grid = GridConfig {
             size: 128,
             pixel_nm: 2.0,
@@ -508,7 +511,7 @@ mod tests {
     #[test]
     fn test_aerial_image_non_negative() {
         let engine = make_test_engine(0.5, 0.75);
-        let mask = Mask::line_space(65.0, 180.0);
+        let mask = Mask::line_space(65.0, 180.0).unwrap();
         let image = engine.compute(&mask, 0.0);
         for &v in image.data.iter() {
             assert!(v >= -1e-10, "Intensity must be non-negative, got {}", v);
@@ -544,7 +547,7 @@ mod tests {
     #[test]
     fn test_defocus_reduces_contrast() {
         let engine = make_test_engine(0.5, 0.75);
-        let mask = Mask::line_space(65.0, 180.0);
+        let mask = Mask::line_space(65.0, 180.0).unwrap();
 
         let image_focus = engine.compute(&mask, 0.0);
         let image_defocus = engine.compute(&mask, 200.0);

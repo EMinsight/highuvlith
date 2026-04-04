@@ -3,7 +3,6 @@
 from typing import Optional
 
 import numpy as np
-import numpy.typing as npt
 
 class SourceConfig:
     """VUV laser source configuration."""

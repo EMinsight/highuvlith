@@ -24,3 +24,13 @@ class TestBatchSimulator:
         focuses = np.asarray(pw.focuses)
         assert len(doses) == 3
         assert len(focuses) == 3
+
+    def test_single_focus_batch(self, source, optics, mask, grid):
+        """batch_defocus with a single focus value should return exactly 1 result."""
+        batch = huv.BatchSimulator(source, optics, mask, grid)
+        results = batch.batch_defocus(focuses=[0.0])
+        assert len(results) == 1
+        focus_val, img = results[0]
+        assert abs(focus_val - 0.0) < 1e-10
+        arr = np.asarray(img)
+        assert arr.shape == (grid.size, grid.size)

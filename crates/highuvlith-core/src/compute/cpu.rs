@@ -27,15 +27,15 @@ impl Default for CpuBackend {
 
 impl ComputeBackend for CpuBackend {
     fn fft2d_forward(&self, data: &mut [Complex64], nx: usize, ny: usize) {
-        let mut arr = Array2::from_shape_vec((ny, nx), data.to_vec())
-            .expect("invalid dimensions for FFT");
+        let mut arr =
+            Array2::from_shape_vec((ny, nx), data.to_vec()).expect("invalid dimensions for FFT");
         self.fft.forward(&mut arr);
         data.copy_from_slice(arr.as_slice().expect("array not contiguous"));
     }
 
     fn fft2d_inverse(&self, data: &mut [Complex64], nx: usize, ny: usize) {
-        let mut arr = Array2::from_shape_vec((ny, nx), data.to_vec())
-            .expect("invalid dimensions for FFT");
+        let mut arr =
+            Array2::from_shape_vec((ny, nx), data.to_vec()).expect("invalid dimensions for FFT");
         self.fft.inverse(&mut arr);
         data.copy_from_slice(arr.as_slice().expect("array not contiguous"));
     }

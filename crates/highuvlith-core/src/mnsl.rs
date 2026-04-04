@@ -90,7 +90,8 @@ impl NanosphereArray {
         let sphere_volume = PI * self.diameter_nm.powi(3) / 6.0;
         match self.packing {
             SpherePacking::HCP => {
-                let unit_cell_volume = self.pitch_nm.powi(2) * (3.0_f64.sqrt() / 2.0) * self.pitch_nm;
+                let unit_cell_volume =
+                    self.pitch_nm.powi(2) * (3.0_f64.sqrt() / 2.0) * self.pitch_nm;
                 2.0 * sphere_volume / unit_cell_volume // 2 spheres per HCP unit cell
             }
             SpherePacking::FCC => {
@@ -170,7 +171,8 @@ impl MnslEngine {
         let top_positions = self.generate_nanosphere_positions(&self.config.top_array);
 
         // 2. Apply rotation to top array
-        let rotated_top = self.apply_rotation_transform(&top_positions, self.config.top_array.orientation_deg);
+        let rotated_top =
+            self.apply_rotation_transform(&top_positions, self.config.top_array.orientation_deg);
 
         // 3. Compute Moiré interference pattern
         let moire_pattern = self.compute_moire_interference(&bottom_positions, &rotated_top);
@@ -189,7 +191,10 @@ impl MnslEngine {
 
         // 8. Calculate integrated quantities
         let total_emission_power = emission_pattern.data.iter().sum();
-        let peak_enhancement = enhancement_factors.data.iter().cloned()
+        let peak_enhancement = enhancement_factors
+            .data
+            .iter()
+            .cloned()
             .fold(0.0f64, f64::max);
 
         MnslResult {
@@ -217,7 +222,11 @@ impl MnslEngine {
                 let mut row = 0;
                 let mut y = -half_field;
                 while y < half_field {
-                    let x_offset = if row % 2 == 0 { 0.0 } else { array.pitch_nm / 2.0 };
+                    let x_offset = if row % 2 == 0 {
+                        0.0
+                    } else {
+                        array.pitch_nm / 2.0
+                    };
                     let mut x = -half_field + x_offset;
 
                     while x < half_field {
@@ -266,7 +275,11 @@ impl MnslEngine {
     }
 
     /// Apply rotation transformation to nanosphere positions.
-    pub fn apply_rotation_transform(&self, positions: &[(f64, f64)], angle_deg: f64) -> Vec<(f64, f64)> {
+    pub fn apply_rotation_transform(
+        &self,
+        positions: &[(f64, f64)],
+        angle_deg: f64,
+    ) -> Vec<(f64, f64)> {
         if angle_deg.abs() < 1e-12 {
             return positions.to_vec();
         }
@@ -275,11 +288,14 @@ impl MnslEngine {
         let cos_theta = angle_rad.cos();
         let sin_theta = angle_rad.sin();
 
-        positions.iter().map(|&(x, y)| {
-            let x_rot = x * cos_theta - y * sin_theta;
-            let y_rot = x * sin_theta + y * cos_theta;
-            (x_rot, y_rot)
-        }).collect()
+        positions
+            .iter()
+            .map(|&(x, y)| {
+                let x_rot = x * cos_theta - y * sin_theta;
+                let y_rot = x * sin_theta + y * cos_theta;
+                (x_rot, y_rot)
+            })
+            .collect()
     }
 
     /// Compute Moiré interference pattern from overlapping nanosphere arrays.
@@ -294,8 +310,10 @@ impl MnslEngine {
                 let y = -half_field + (i as f64 + 0.5) * self.grid.pixel_nm;
 
                 // Calculate scattering contributions from both layers
-                let bottom_contrib = self.calculate_array_scattering(x, y, bottom, &self.config.bottom_array);
-                let top_contrib = self.calculate_array_scattering(x, y, top, &self.config.top_array);
+                let bottom_contrib =
+                    self.calculate_array_scattering(x, y, bottom, &self.config.bottom_array);
+                let top_contrib =
+                    self.calculate_array_scattering(x, y, top, &self.config.top_array);
 
                 // Phase difference due to layer separation
                 let k = TAU / self.config.wavelength_nm;
@@ -318,7 +336,13 @@ impl MnslEngine {
     }
 
     /// Calculate scattering contribution from a nanosphere array at given position.
-    fn calculate_array_scattering(&self, x: f64, y: f64, positions: &[(f64, f64)], array: &NanosphereArray) -> Complex64 {
+    fn calculate_array_scattering(
+        &self,
+        x: f64,
+        y: f64,
+        positions: &[(f64, f64)],
+        array: &NanosphereArray,
+    ) -> Complex64 {
         let k = TAU / self.config.wavelength_nm;
         let radius = array.diameter_nm / 2.0;
         let n_sphere = Complex64::new(array.n_real, array.n_imag);
@@ -388,14 +412,18 @@ impl MnslEngine {
         } else {
             // Calculate substrate standing wave enhancement
             let z_points = vec![self.config.separation_nm];
-            let standing_wave = self.config.substrate.substrate_stack
+            let standing_wave = self
+                .config
+                .substrate
+                .substrate_stack
                 .standing_wave(self.config.wavelength_nm, &z_points);
-            let substrate_factor = standing_wave.get(0).copied().unwrap_or(1.0);
+            let substrate_factor = standing_wave.first().copied().unwrap_or(1.0);
 
             for i in 0..n {
                 for j in 0..n {
                     let local_enhancement = enhancement.data[[i, j]];
-                    let substrate_enhancement = 1.0 + self.config.substrate.coupling_strength * (substrate_factor - 1.0);
+                    let substrate_enhancement =
+                        1.0 + self.config.substrate.coupling_strength * (substrate_factor - 1.0);
                     emission[[i, j]] = local_enhancement * substrate_enhancement;
                 }
             }
@@ -437,24 +465,23 @@ impl MnslEngine {
         let threshold = 0.8; // Find peaks above 80% of maximum
 
         // Find global maximum
-        let max_value = emission.data.iter().cloned()
-            .fold(0.0f64, f64::max);
+        let max_value = emission.data.iter().cloned().fold(0.0f64, f64::max);
         let min_peak_value = threshold * max_value;
 
         // Search for local maxima
-        for i in 1..n-1 {
-            for j in 1..n-1 {
+        for i in 1..n - 1 {
+            for j in 1..n - 1 {
                 let center = emission.data[[i, j]];
                 if center > min_peak_value {
                     // Check if it's a local maximum
-                    let is_peak = center > emission.data[[i-1, j]] &&
-                                 center > emission.data[[i+1, j]] &&
-                                 center > emission.data[[i, j-1]] &&
-                                 center > emission.data[[i, j+1]] &&
-                                 center > emission.data[[i-1, j-1]] &&
-                                 center > emission.data[[i-1, j+1]] &&
-                                 center > emission.data[[i+1, j-1]] &&
-                                 center > emission.data[[i+1, j+1]];
+                    let is_peak = center > emission.data[[i - 1, j]]
+                        && center > emission.data[[i + 1, j]]
+                        && center > emission.data[[i, j - 1]]
+                        && center > emission.data[[i, j + 1]]
+                        && center > emission.data[[i - 1, j - 1]]
+                        && center > emission.data[[i - 1, j + 1]]
+                        && center > emission.data[[i + 1, j - 1]]
+                        && center > emission.data[[i + 1, j + 1]];
 
                     if is_peak {
                         let x = emission.x_at(j);
@@ -477,13 +504,14 @@ pub fn simulate_moire_emission(
     separation_nm: f64,
     grid: GridConfig,
 ) -> MnslResult {
-    let mut config = MnslConfig::default();
-
-    // Configure arrays
-    config.bottom_array = NanosphereArray::silica_spheres(sphere_diameter_nm, array_pitch_nm);
-    config.top_array = NanosphereArray::silica_spheres(sphere_diameter_nm, array_pitch_nm);
-    config.top_array.orientation_deg = rotation_angle_deg;
-    config.separation_nm = separation_nm;
+    let mut top_array = NanosphereArray::silica_spheres(sphere_diameter_nm, array_pitch_nm);
+    top_array.orientation_deg = rotation_angle_deg;
+    let config = MnslConfig {
+        bottom_array: NanosphereArray::silica_spheres(sphere_diameter_nm, array_pitch_nm),
+        top_array,
+        separation_nm,
+        ..MnslConfig::default()
+    };
 
     let engine = MnslEngine::new(config, grid);
     engine.compute_emission()
@@ -498,7 +526,10 @@ mod tests {
     fn test_nanosphere_array_volume_fraction() {
         let array = NanosphereArray::silica_spheres(200.0, 300.0);
         let vf = array.volume_fraction();
-        assert!(vf > 0.0 && vf < 1.0, "Volume fraction should be between 0 and 1");
+        assert!(
+            vf > 0.0 && vf < 1.0,
+            "Volume fraction should be between 0 and 1"
+        );
     }
 
     #[test]

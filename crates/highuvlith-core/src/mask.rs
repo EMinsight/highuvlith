@@ -6,9 +6,10 @@ use crate::math::fft2d::Fft2D;
 use crate::types::{Complex64, GridConfig};
 
 /// Mask type (determines phase and transmission of dark regions).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum MaskType {
     /// Binary chrome-on-glass mask.
+    #[default]
     Binary,
     /// Attenuated phase-shift mask.
     AttenuatedPSM {
@@ -19,12 +20,6 @@ pub enum MaskType {
     },
     /// Alternating aperture phase-shift mask.
     AlternatingPSM,
-}
-
-impl Default for MaskType {
-    fn default() -> Self {
-        Self::Binary
-    }
 }
 
 /// A geometric feature on the mask (at wafer scale).
@@ -51,7 +46,28 @@ impl Mask {
     /// cd_nm: line width at wafer scale.
     /// pitch_nm: line+space pitch at wafer scale.
     /// The pattern is centered and repeated across the field.
-    pub fn line_space(cd_nm: f64, pitch_nm: f64) -> Self {
+    pub fn line_space(cd_nm: f64, pitch_nm: f64) -> crate::error::Result<Self> {
+        if cd_nm.is_nan() || cd_nm <= 0.0 {
+            return Err(crate::error::LithographyError::InvalidParameter {
+                name: "cd_nm",
+                value: cd_nm,
+                reason: "must be positive",
+            });
+        }
+        if pitch_nm.is_nan() || pitch_nm <= 0.0 {
+            return Err(crate::error::LithographyError::InvalidParameter {
+                name: "pitch_nm",
+                value: pitch_nm,
+                reason: "must be positive",
+            });
+        }
+        if cd_nm >= pitch_nm {
+            return Err(crate::error::LithographyError::InvalidParameter {
+                name: "cd_nm",
+                value: cd_nm,
+                reason: "must be less than pitch_nm",
+            });
+        }
         // Create spaces (clear regions) between lines
         let num_periods = 10; // enough to fill a typical field
         let mut features = Vec::new();
@@ -75,15 +91,40 @@ impl Mask {
 
         // For bright-field L/S, the features are the clear spaces,
         // and lines are the dark background
-        Self {
+        Ok(Self {
             mask_type: MaskType::Binary,
             features,
             dark_field: false,
-        }
+        })
     }
 
     /// Create a contact hole pattern.
-    pub fn contact_hole(diameter_nm: f64, pitch_x_nm: f64, pitch_y_nm: f64) -> Self {
+    pub fn contact_hole(
+        diameter_nm: f64,
+        pitch_x_nm: f64,
+        pitch_y_nm: f64,
+    ) -> crate::error::Result<Self> {
+        if diameter_nm.is_nan() || diameter_nm <= 0.0 {
+            return Err(crate::error::LithographyError::InvalidParameter {
+                name: "diameter_nm",
+                value: diameter_nm,
+                reason: "must be positive",
+            });
+        }
+        if pitch_x_nm.is_nan() || pitch_x_nm <= 0.0 {
+            return Err(crate::error::LithographyError::InvalidParameter {
+                name: "pitch_x_nm",
+                value: pitch_x_nm,
+                reason: "must be positive",
+            });
+        }
+        if pitch_y_nm.is_nan() || pitch_y_nm <= 0.0 {
+            return Err(crate::error::LithographyError::InvalidParameter {
+                name: "pitch_y_nm",
+                value: pitch_y_nm,
+                reason: "must be positive",
+            });
+        }
         let num_x = 5;
         let num_y = 5;
         let mut features = Vec::new();
@@ -101,11 +142,11 @@ impl Mask {
             }
         }
 
-        Self {
+        Ok(Self {
             mask_type: MaskType::Binary,
             features,
             dark_field: true,
-        }
+        })
     }
 
     /// Rasterize the mask to a 2D complex transmittance array.
@@ -219,7 +260,7 @@ fn point_in_polygon(x: f64, y: f64, vertices: &[(f64, f64)]) -> bool {
 
 impl Default for Mask {
     fn default() -> Self {
-        Self::line_space(65.0, 180.0)
+        Self::line_space(65.0, 180.0).expect("default mask parameters are valid")
     }
 }
 
@@ -229,14 +270,14 @@ mod tests {
 
     #[test]
     fn test_line_space_creates_features() {
-        let mask = Mask::line_space(65.0, 180.0);
+        let mask = Mask::line_space(65.0, 180.0).unwrap();
         assert!(!mask.features.is_empty());
         assert!(!mask.dark_field);
     }
 
     #[test]
     fn test_rasterize_has_correct_size() {
-        let mask = Mask::line_space(65.0, 180.0);
+        let mask = Mask::line_space(65.0, 180.0).unwrap();
         let grid = GridConfig::default();
         let raster = mask.rasterize(&grid);
         assert_eq!(raster.dim(), (512, 512));
@@ -244,7 +285,7 @@ mod tests {
 
     #[test]
     fn test_binary_mask_values() {
-        let mask = Mask::line_space(100.0, 200.0);
+        let mask = Mask::line_space(100.0, 200.0).unwrap();
         let grid = GridConfig {
             size: 256,
             pixel_nm: 2.0,
@@ -290,7 +331,7 @@ mod tests {
 
     #[test]
     fn test_contact_hole_dark_field() {
-        let mask = Mask::contact_hole(80.0, 200.0, 200.0);
+        let mask = Mask::contact_hole(80.0, 200.0, 200.0).unwrap();
         assert!(mask.dark_field);
         assert_eq!(mask.features.len(), 25); // 5x5 array
     }
@@ -300,5 +341,37 @@ mod tests {
         let triangle = vec![(0.0, 0.0), (4.0, 0.0), (2.0, 3.0)];
         assert!(point_in_polygon(2.0, 1.0, &triangle));
         assert!(!point_in_polygon(5.0, 5.0, &triangle));
+    }
+
+    #[test]
+    fn test_invalid_cd_exceeds_pitch() {
+        // CD >= pitch should return Err
+        assert!(Mask::line_space(100.0, 50.0).is_err());
+        assert!(Mask::line_space(100.0, 100.0).is_err());
+    }
+
+    #[test]
+    fn test_invalid_negative_cd() {
+        assert!(Mask::line_space(-10.0, 100.0).is_err());
+        assert!(Mask::line_space(0.0, 100.0).is_err());
+    }
+
+    #[test]
+    fn test_contact_hole_valid() {
+        let mask = Mask::contact_hole(50.0, 150.0, 150.0);
+        assert!(mask.is_ok());
+        let mask = mask.unwrap();
+        assert!(mask.dark_field);
+        assert!(!mask.features.is_empty());
+    }
+
+    #[test]
+    fn test_contact_hole_invalid_diameter() {
+        // Diameter <= 0 should return Err
+        assert!(Mask::contact_hole(0.0, 150.0, 150.0).is_err());
+        assert!(Mask::contact_hole(-10.0, 150.0, 150.0).is_err());
+        // Invalid pitch
+        assert!(Mask::contact_hole(50.0, 0.0, 150.0).is_err());
+        assert!(Mask::contact_hole(50.0, 150.0, -1.0).is_err());
     }
 }

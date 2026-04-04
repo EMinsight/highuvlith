@@ -7,7 +7,6 @@ from typing import Any
 
 import numpy as np
 
-import highuvlith as huv
 from ._native import (
     PyMnslConfig,
     PyMnslEngine,
@@ -143,6 +142,19 @@ def simulate_moire_emission(
         >>> print(f"Peak enhancement: {result.peak_enhancement:.2f}×")
         >>> print(f"Number of peaks: {result.num_peaks}")
     """
+    from highuvlith._validation import (
+        _validate_positive,
+        _validate_power_of_two,
+        _validate_range,
+    )
+
+    _validate_positive("sphere_diameter_nm", sphere_diameter_nm)
+    _validate_positive("array_pitch_nm", array_pitch_nm)
+    _validate_positive("separation_nm", separation_nm)
+    _validate_range("coupling_strength", coupling_strength, 0.0, 1.0)
+    _validate_power_of_two("grid_size", grid_size)
+    _validate_positive("pixel_nm", pixel_nm)
+
     # Use low-level function for efficient simulation
     py_result = py_simulate_moire_emission(
         sphere_diameter_nm,
@@ -189,6 +201,11 @@ def create_nanosphere_array(
     Returns:
         NanosphereArrayConfig object.
     """
+    from highuvlith._validation import _validate_positive
+
+    _validate_positive("diameter_nm", diameter_nm)
+    _validate_positive("pitch_nm", pitch_nm)
+
     packing_map = {
         "hcp": SpherePacking.HCP,
         "fcc": SpherePacking.FCC,
@@ -238,6 +255,17 @@ def sweep_rotation_angle(
         Dict with 'angles', 'peak_enhancements', 'moire_periods' arrays
         and 'best_angle_deg', 'best_enhancement'.
     """
+    from highuvlith._validation import _validate_positive
+
+    _validate_positive("sphere_diameter_nm", sphere_diameter_nm)
+    _validate_positive("array_pitch_nm", array_pitch_nm)
+    if angle_min >= angle_max:
+        raise ValueError(
+            f"angle_min ({angle_min}) must be less than angle_max ({angle_max})"
+        )
+    if angle_steps < 2:
+        raise ValueError(f"angle_steps must be >= 2, got {angle_steps}")
+
     angles = np.linspace(angle_min, angle_max, angle_steps)
     peak_enhancements = []
     moire_periods = []
@@ -300,6 +328,17 @@ def sweep_separation(
         Dict with 'separations', 'peak_enhancements', 'total_powers' arrays
         and 'best_separation_nm', 'best_enhancement'.
     """
+    from highuvlith._validation import _validate_positive
+
+    _validate_positive("sphere_diameter_nm", sphere_diameter_nm)
+    _validate_positive("array_pitch_nm", array_pitch_nm)
+    if separation_min >= separation_max:
+        raise ValueError(
+            f"separation_min ({separation_min}) must be less than separation_max ({separation_max})"
+        )
+    if separation_steps < 2:
+        raise ValueError(f"separation_steps must be >= 2, got {separation_steps}")
+
     separations = np.linspace(separation_min, separation_max, separation_steps)
     peak_enhancements = []
     total_powers = []
@@ -357,6 +396,23 @@ def optimize_moire_parameters(
         Dict with optimization results including 'best_angle_deg', 'best_separation_nm',
         'max_enhancement', and full parameter sweep data.
     """
+    from highuvlith._validation import _validate_positive
+
+    _validate_positive("sphere_diameter_nm", sphere_diameter_nm)
+    _validate_positive("array_pitch_nm", array_pitch_nm)
+    if angle_range[0] >= angle_range[1]:
+        raise ValueError(
+            f"angle_range[0] ({angle_range[0]}) must be less than angle_range[1] ({angle_range[1]})"
+        )
+    if separation_range[0] >= separation_range[1]:
+        raise ValueError(
+            f"separation_range[0] ({separation_range[0]}) must be less than separation_range[1] ({separation_range[1]})"
+        )
+    if angle_steps < 2:
+        raise ValueError(f"angle_steps must be >= 2, got {angle_steps}")
+    if separation_steps < 2:
+        raise ValueError(f"separation_steps must be >= 2, got {separation_steps}")
+
     angles = np.linspace(angle_range[0], angle_range[1], angle_steps)
     separations = np.linspace(separation_range[0], separation_range[1], separation_steps)
 

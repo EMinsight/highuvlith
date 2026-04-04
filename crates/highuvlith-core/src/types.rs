@@ -15,14 +15,47 @@ pub struct Grid2D<T> {
 }
 
 impl<T: Clone + Default> Grid2D<T> {
-    pub fn new(nx: usize, ny: usize, x_range: (f64, f64), y_range: (f64, f64)) -> Self {
-        Self {
+    pub fn new(
+        nx: usize,
+        ny: usize,
+        x_range: (f64, f64),
+        y_range: (f64, f64),
+    ) -> crate::error::Result<Self> {
+        if nx == 0 {
+            return Err(crate::error::LithographyError::InvalidParameter {
+                name: "nx",
+                value: 0.0,
+                reason: "must be positive",
+            });
+        }
+        if ny == 0 {
+            return Err(crate::error::LithographyError::InvalidParameter {
+                name: "ny",
+                value: 0.0,
+                reason: "must be positive",
+            });
+        }
+        if x_range.0 >= x_range.1 {
+            return Err(crate::error::LithographyError::InvalidParameter {
+                name: "x_range",
+                value: x_range.0,
+                reason: "x_min must be less than x_max",
+            });
+        }
+        if y_range.0 >= y_range.1 {
+            return Err(crate::error::LithographyError::InvalidParameter {
+                name: "y_range",
+                value: y_range.0,
+                reason: "y_min must be less than y_max",
+            });
+        }
+        Ok(Self {
             data: Array2::default((ny, nx)),
             x_min_nm: x_range.0,
             x_max_nm: x_range.1,
             y_min_nm: y_range.0,
             y_max_nm: y_range.1,
-        }
+        })
     }
 
     pub fn nx(&self) -> usize {

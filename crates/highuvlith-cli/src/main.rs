@@ -66,12 +66,23 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Simulate { config, output, focus, dose } => {
-            commands::simulate::run(&config, output.as_deref(), focus, dose)
-        }
-        Commands::Sweep { config, output, focus_range, dose_range } => {
-            commands::sweep::run(&config, output.as_deref(), &focus_range, dose_range.as_deref())
-        }
+        Commands::Simulate {
+            config,
+            output,
+            focus,
+            dose,
+        } => commands::simulate::run(&config, output.as_deref(), focus, dose),
+        Commands::Sweep {
+            config,
+            output,
+            focus_range,
+            dose_range,
+        } => commands::sweep::run(
+            &config,
+            output.as_deref(),
+            &focus_range,
+            dose_range.as_deref(),
+        ),
         Commands::Materials { wavelength, name } => {
             commands::materials::run(wavelength, name.as_deref())
         }

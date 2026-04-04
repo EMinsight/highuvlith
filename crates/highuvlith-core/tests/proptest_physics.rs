@@ -1,9 +1,9 @@
 //! Property-based tests using proptest to verify physical invariants
 //! hold across random parameter configurations.
 
-use proptest::prelude::*;
-use highuvlith_core::thinfilm::{FilmStack, FilmLayer};
+use highuvlith_core::thinfilm::{FilmLayer, FilmStack};
 use highuvlith_core::types::{Complex64, Polarization};
+use proptest::prelude::*;
 
 proptest! {
     /// Film stack reflectance must always be in [0, 1] for any real substrate.

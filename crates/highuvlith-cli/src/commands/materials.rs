@@ -5,9 +5,19 @@ pub fn run(wavelength: Option<f64>, name: Option<&str>) -> anyhow::Result<()> {
     let wl = wavelength.unwrap_or(157.0);
 
     let materials = [
-        "CaF2", "MgF2", "LiF", "BaF2", "SiO2",
-        "Cr", "Si", "AlF3", "Na3AlF6", "LaF3", "GdF3",
-        "VUV_resist", "VUV_BARC",
+        "CaF2",
+        "MgF2",
+        "LiF",
+        "BaF2",
+        "SiO2",
+        "Cr",
+        "Si",
+        "AlF3",
+        "Na3AlF6",
+        "LaF3",
+        "GdF3",
+        "VUV_resist",
+        "VUV_BARC",
     ];
 
     if let Some(mat_name) = name {
@@ -23,7 +33,10 @@ pub fn run(wavelength: Option<f64>, name: Option<&str>) -> anyhow::Result<()> {
             Err(e) => eprintln!("Error: {}", e),
         }
     } else {
-        println!("{:<12} {:>8} {:>8}  (at {:.1} nm)", "Material", "n", "k", wl);
+        println!(
+            "{:<12} {:>8} {:>8}  (at {:.1} nm)",
+            "Material", "n", "k", wl
+        );
         println!("{}", "-".repeat(40));
         for mat in &materials {
             match db.refractive_index(mat, wl) {

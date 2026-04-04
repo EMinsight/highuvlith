@@ -10,21 +10,31 @@ pub fn run(
     _dose_override: Option<f64>,
 ) -> anyhow::Result<()> {
     let config = SimConfig::load(config_path)?;
+    config.validate()?;
     let source = config.to_source();
-    let optics = config.to_optics();
-    let mask = config.to_mask();
+    let optics = config.to_optics()?;
+    let mask = config.to_mask()?;
     let grid = config.to_grid()?;
 
     let focus = focus_override.unwrap_or(config.process.focus_nm);
 
-    eprintln!("Source:  λ = {:.2} nm, σ = {:.2}", source.wavelength_nm,
+    eprintln!(
+        "Source:  λ = {:.2} nm, σ = {:.2}",
+        source.wavelength_nm,
         match &source.illumination {
             highuvlith_core::source::IlluminationShape::Conventional { sigma } => *sigma,
             _ => 0.0,
-        });
+        }
+    );
     eprintln!("Optics:  NA = {:.2}", optics.na);
-    eprintln!("Mask:    CD = {:.1} nm, pitch = {:.1} nm", config.mask.cd_nm, config.mask.pitch_nm);
-    eprintln!("Grid:    {}×{}, pixel = {:.1} nm", grid.size, grid.size, grid.pixel_nm);
+    eprintln!(
+        "Mask:    CD = {:.1} nm, pitch = {:.1} nm",
+        config.mask.cd_nm, config.mask.pitch_nm
+    );
+    eprintln!(
+        "Grid:    {}×{}, pixel = {:.1} nm",
+        grid.size, grid.size, grid.pixel_nm
+    );
     eprintln!("Focus:   {:.1} nm", focus);
 
     let engine = AerialImageEngine::new(&source, &optics, grid.clone(), 20)?;
@@ -35,7 +45,11 @@ pub fn run(
     let elapsed = start.elapsed();
 
     let contrast = metrics::image_contrast(&aerial.data);
-    let max_i = aerial.data.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let max_i = aerial
+        .data
+        .iter()
+        .cloned()
+        .fold(f64::NEG_INFINITY, f64::max);
     let min_i = aerial.data.iter().cloned().fold(f64::INFINITY, f64::min);
 
     eprintln!("Compute: {:.2?}", elapsed);
@@ -59,7 +73,7 @@ pub fn run(
             "compute_ms": elapsed.as_secs_f64() * 1000.0,
             "num_kernels": engine.num_kernels(),
         });
-        if out_path.extension().map_or(false, |ext| ext == "png") {
+        if out_path.extension().is_some_and(|ext| ext == "png") {
             use highuvlith_core::io::image_export::{save_png, Colormap};
             save_png(&aerial.data, out_path, Colormap::Inferno)
                 .map_err(|e| anyhow::anyhow!("Failed to save PNG: {}", e))?;

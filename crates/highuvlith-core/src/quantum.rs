@@ -32,6 +32,39 @@ impl Default for QuantumLithographyParams {
 }
 
 impl QuantumLithographyParams {
+    /// Validate the parameters.
+    pub fn validate(&self) -> crate::error::Result<()> {
+        if self.num_entangled_photons == 0 {
+            return Err(crate::error::LithographyError::InvalidParameter {
+                name: "num_entangled_photons",
+                value: 0.0,
+                reason: "must be positive",
+            });
+        }
+        if self.fidelity.is_nan() || self.fidelity < 0.0 || self.fidelity > 1.0 {
+            return Err(crate::error::LithographyError::InvalidParameter {
+                name: "fidelity",
+                value: self.fidelity,
+                reason: "must be in range [0, 1]",
+            });
+        }
+        if self.wavelength_nm.is_nan() || self.wavelength_nm <= 0.0 {
+            return Err(crate::error::LithographyError::InvalidParameter {
+                name: "wavelength_nm",
+                value: self.wavelength_nm,
+                reason: "must be positive",
+            });
+        }
+        if self.na.is_nan() || self.na <= 0.0 || self.na >= 1.0 {
+            return Err(crate::error::LithographyError::InvalidParameter {
+                name: "na",
+                value: self.na,
+                reason: "must be in range (0, 1)",
+            });
+        }
+        Ok(())
+    }
+
     /// Effective wavelength: λ_eff = λ / N.
     pub fn effective_wavelength_nm(&self) -> f64 {
         self.wavelength_nm / self.num_entangled_photons as f64
@@ -76,17 +109,18 @@ impl QuantumLithographyParams {
 pub fn compute_quantum_aerial_image(
     classical_aerial: &Array2<f64>,
     params: &QuantumLithographyParams,
-) -> Array2<f64> {
+) -> crate::error::Result<Array2<f64>> {
+    params.validate()?;
     let n_photons = params.num_entangled_photons;
     let fidelity = params.fidelity;
 
-    classical_aerial.mapv(|intensity| {
+    Ok(classical_aerial.mapv(|intensity| {
         // N-photon absorption: I^N for entangled state
         let quantum_signal = intensity.powi(n_photons as i32);
         // Mix with classical signal based on fidelity
         // fidelity=1: pure quantum; fidelity=0: classical
         fidelity * quantum_signal + (1.0 - fidelity) * intensity
-    })
+    }))
 }
 
 /// Compare classical vs quantum imaging for a given pattern.
@@ -112,13 +146,13 @@ pub struct QuantumComparison {
 pub fn compare_classical_quantum(
     classical_aerial: &Array2<f64>,
     params: &QuantumLithographyParams,
-) -> QuantumComparison {
-    let quantum = compute_quantum_aerial_image(classical_aerial, params);
+) -> crate::error::Result<QuantumComparison> {
+    let quantum = compute_quantum_aerial_image(classical_aerial, params)?;
 
     let classical_contrast = image_contrast(classical_aerial);
     let quantum_contrast = image_contrast(&quantum);
 
-    QuantumComparison {
+    Ok(QuantumComparison {
         classical: classical_aerial.clone(),
         quantum,
         classical_contrast,
@@ -126,13 +160,17 @@ pub fn compare_classical_quantum(
         classical_resolution_nm: params.classical_resolution_nm(),
         quantum_resolution_nm: params.quantum_resolution_nm(),
         exposure_time_ratio: params.exposure_time_ratio(),
-    }
+    })
 }
 
 fn image_contrast(img: &Array2<f64>) -> f64 {
     let max = img.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
     let min = img.iter().cloned().fold(f64::INFINITY, f64::min);
-    if max + min > 0.0 { (max - min) / (max + min) } else { 0.0 }
+    if max + min > 0.0 {
+        (max - min) / (max + min)
+    } else {
+        0.0
+    }
 }
 
 #[cfg(test)]
@@ -163,8 +201,11 @@ mod tests {
             num_entangled_photons: 2,
             ..Default::default()
         };
-        assert!(params.exposure_time_ratio() > 10.0,
-            "Biphoton exposure should be much longer: {:.0}×", params.exposure_time_ratio());
+        assert!(
+            params.exposure_time_ratio() > 10.0,
+            "Biphoton exposure should be much longer: {:.0}×",
+            params.exposure_time_ratio()
+        );
     }
 
     #[test]
@@ -182,26 +223,66 @@ mod tests {
             ..Default::default()
         };
 
-        let quantum = compute_quantum_aerial_image(&aerial, &params);
+        let quantum = compute_quantum_aerial_image(&aerial, &params).unwrap();
         let c_class = image_contrast(&aerial);
         let c_quant = image_contrast(&quantum);
 
-        assert!(c_quant > c_class,
-            "Quantum contrast ({:.4}) should exceed classical ({:.4})", c_quant, c_class);
+        assert!(
+            c_quant > c_class,
+            "Quantum contrast ({:.4}) should exceed classical ({:.4})",
+            c_quant,
+            c_class
+        );
     }
 
     #[test]
     fn test_fidelity_interpolation() {
         let aerial = Array2::from_elem((16, 16), 0.5);
-        let params_full = QuantumLithographyParams { fidelity: 1.0, ..Default::default() };
-        let params_none = QuantumLithographyParams { fidelity: 0.0, ..Default::default() };
+        let params_full = QuantumLithographyParams {
+            fidelity: 1.0,
+            ..Default::default()
+        };
+        let params_none = QuantumLithographyParams {
+            fidelity: 0.0,
+            ..Default::default()
+        };
 
-        let q_full = compute_quantum_aerial_image(&aerial, &params_full);
-        let q_none = compute_quantum_aerial_image(&aerial, &params_none);
+        let q_full = compute_quantum_aerial_image(&aerial, &params_full).unwrap();
+        let q_none = compute_quantum_aerial_image(&aerial, &params_none).unwrap();
 
         // fidelity=0 should give back classical
         assert_relative_eq!(q_none[[0, 0]], 0.5, epsilon = 1e-10);
         // fidelity=1 should give I^N = 0.5^2 = 0.25
         assert_relative_eq!(q_full[[0, 0]], 0.25, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_validate_rejects_zero_photons() {
+        let params = QuantumLithographyParams {
+            num_entangled_photons: 0,
+            ..Default::default()
+        };
+        assert!(params.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_rejects_bad_fidelity() {
+        let params_over = QuantumLithographyParams {
+            fidelity: 1.5,
+            ..Default::default()
+        };
+        assert!(params_over.validate().is_err());
+
+        let params_neg = QuantumLithographyParams {
+            fidelity: -0.1,
+            ..Default::default()
+        };
+        assert!(params_neg.validate().is_err());
+
+        let params_nan = QuantumLithographyParams {
+            fidelity: f64::NAN,
+            ..Default::default()
+        };
+        assert!(params_nan.validate().is_err());
     }
 }

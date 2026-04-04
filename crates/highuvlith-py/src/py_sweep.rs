@@ -26,9 +26,7 @@ impl PyBatchSimulator {
         grid: Option<PyGridConfig>,
         max_kernels: usize,
     ) -> PyResult<Self> {
-        let grid_config = grid
-            .map(|g| g.inner)
-            .unwrap_or_default();
+        let grid_config = grid.map(|g| g.inner).unwrap_or_default();
 
         let engine = AerialImageEngine::new(
             &source.inner,
@@ -63,17 +61,19 @@ impl PyBatchSimulator {
         cd_target_nm: f64,
         cd_tolerance_pct: f64,
     ) -> PyResult<PyProcessWindowResult> {
-        let pw = py.allow_threads(|| {
-            ProcessWindow::compute(
-                &self.engine,
-                &self.mask,
-                &doses,
-                &focuses,
-                cd_threshold,
-                cd_target_nm,
-                cd_tolerance_pct,
-            )
-        });
+        let pw = py
+            .allow_threads(|| {
+                ProcessWindow::compute(
+                    &self.engine,
+                    &self.mask,
+                    &doses,
+                    &focuses,
+                    cd_threshold,
+                    cd_target_nm,
+                    cd_tolerance_pct,
+                )
+            })
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         Ok(PyProcessWindowResult { inner: pw })
     }

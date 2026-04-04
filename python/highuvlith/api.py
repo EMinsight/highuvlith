@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -54,6 +54,21 @@ def simulate_line_space(
     Returns:
         FullResult with aerial image, contrast, and optionally resist profile.
     """
+    from highuvlith._validation import (
+        _validate_positive,
+        _validate_power_of_two,
+        _validate_range,
+    )
+
+    _validate_positive("cd_nm", cd_nm)
+    _validate_positive("pitch_nm", pitch_nm)
+    if cd_nm >= pitch_nm:
+        raise ValueError(f"cd_nm ({cd_nm}) must be less than pitch_nm ({pitch_nm})")
+    _validate_range("na", na, 0.01, 1.0)
+    _validate_range("sigma", sigma, 0.01, 1.0)
+    _validate_power_of_two("grid_size", grid_size)
+    _validate_positive("pixel_nm", pixel_nm)
+
     source = huv.SourceConfig(
         wavelength_nm=wavelength_nm,
         sigma_outer=sigma,
@@ -124,6 +139,20 @@ def simulate_contact_hole(
     Returns:
         FullResult with aerial image and contrast.
     """
+    from highuvlith._validation import (
+        _validate_positive,
+        _validate_power_of_two,
+        _validate_range,
+    )
+
+    _validate_positive("diameter_nm", diameter_nm)
+    _validate_positive("pitch_x_nm", pitch_x_nm)
+    if pitch_y_nm is not None:
+        _validate_positive("pitch_y_nm", pitch_y_nm)
+    _validate_range("na", na, 0.01, 1.0)
+    _validate_range("sigma", sigma, 0.01, 1.0)
+    _validate_power_of_two("grid_size", grid_size)
+
     if pitch_y_nm is None:
         pitch_y_nm = pitch_x_nm
 
@@ -172,6 +201,24 @@ def sweep_focus(
     Returns:
         Dict with 'focuses', 'contrasts' arrays and 'best_focus_nm'.
     """
+    from highuvlith._validation import (
+        _validate_positive,
+        _validate_power_of_two,
+        _validate_range,
+    )
+
+    if focus_min >= focus_max:
+        raise ValueError(
+            f"focus_min ({focus_min}) must be less than focus_max ({focus_max})"
+        )
+    if focus_steps < 2:
+        raise ValueError(f"focus_steps must be >= 2, got {focus_steps}")
+    _validate_positive("cd_nm", cd_nm)
+    _validate_positive("pitch_nm", pitch_nm)
+    _validate_range("na", na, 0.01, 1.0)
+    _validate_range("sigma", sigma, 0.01, 1.0)
+    _validate_power_of_two("grid_size", grid_size)
+
     source = huv.SourceConfig(wavelength_nm=wavelength_nm, sigma_outer=sigma)
     optics = huv.OpticsConfig(numerical_aperture=na)
     mask = huv.MaskConfig.line_space(cd_nm=cd_nm, pitch_nm=pitch_nm)

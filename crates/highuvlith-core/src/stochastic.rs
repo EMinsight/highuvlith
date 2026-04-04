@@ -98,12 +98,14 @@ pub fn apply_shot_noise(
         // Poisson sampling for small photon counts, Gaussian approximation for large
         let sampled = if mean_photons < 1000.0 {
             match Poisson::new(mean_photons) {
-                Ok(dist) => rng.sample(dist) as f64,
+                Ok(dist) => rng.sample(dist),
                 Err(_) => mean_photons,
             }
         } else {
-            let normal = Normal::new(mean_photons, mean_photons.sqrt()).unwrap();
-            rng.sample(normal).max(0.0)
+            match Normal::new(mean_photons, mean_photons.sqrt()) {
+                Ok(normal) => rng.sample(normal).max(0.0),
+                Err(_) => mean_photons, // fallback to deterministic
+            }
         };
 
         // Normalize back to intensity scale
@@ -130,7 +132,10 @@ pub fn apply_acid_noise(
     let noise_scale = 0.01 * sigma_pixels; // empirical scaling
 
     pac.mapv(|m| {
-        let noise = rng.sample(Normal::new(0.0, noise_scale).unwrap());
+        let noise = match Normal::new(0.0, noise_scale) {
+            Ok(dist) => rng.sample(dist),
+            Err(_) => 0.0,
+        };
         (m + noise).clamp(0.0, 1.0)
     })
 }
@@ -317,15 +322,7 @@ mod tests {
             num_realizations: 50,
         };
 
-        let result = compute_ler_lwr(
-            &aerial,
-            -128.0,
-            128.0,
-            30.0,
-            2.0,
-            0.5,
-            &params,
-        );
+        let result = compute_ler_lwr(&aerial, -128.0, 128.0, 30.0, 2.0, 0.5, &params);
 
         assert!(result.cd_mean_nm > 0.0, "Mean CD should be positive");
         assert!(result.ler_3sigma_nm >= 0.0, "LER should be non-negative");
@@ -354,8 +351,11 @@ mod tests {
             num_realizations: 50,
         };
         let result = compute_ler_lwr(&aerial, -128.0, 128.0, 100.0, 2.0, 0.5, &params_low_noise);
-        assert!(result.ler_3sigma_nm < 5.0,
-            "Low-noise LER should be small, got {:.2}", result.ler_3sigma_nm);
+        assert!(
+            result.ler_3sigma_nm < 5.0,
+            "Low-noise LER should be small, got {:.2}",
+            result.ler_3sigma_nm
+        );
         assert!(result.cd_mean_nm > 0.0);
     }
 }

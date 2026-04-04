@@ -99,11 +99,7 @@ pub struct ResistProfile {
 /// Uses the Dill exposure model:
 ///   m(x,y) = exp(-C * dose * I(x,y))
 /// where I is the aerial image intensity.
-pub fn expose(
-    aerial_image: &Array2<f64>,
-    dose_mj_cm2: f64,
-    params: &ResistParams,
-) -> LatentImage {
+pub fn expose(aerial_image: &Array2<f64>, dose_mj_cm2: f64, params: &ResistParams) -> LatentImage {
     let pac = aerial_image.mapv(|intensity| {
         // Beer-Lambert through resist (depth-averaged approximation)
         let effective_intensity = intensity * effective_coupling(params);
@@ -127,10 +123,10 @@ pub fn peb_diffuse(latent: &mut LatentImage, diffusion_nm: f64, pixel_nm: f64) {
     // Build 1D Gaussian kernel
     let mut kernel = vec![0.0; kernel_size];
     let mut sum = 0.0;
-    for i in 0..kernel_size {
+    for (i, k_val) in kernel.iter_mut().enumerate().take(kernel_size) {
         let d = i as f64 - kernel_radius as f64;
-        kernel[i] = (-d * d / (2.0 * sigma_pixels * sigma_pixels)).exp();
-        sum += kernel[i];
+        *k_val = (-d * d / (2.0 * sigma_pixels * sigma_pixels)).exp();
+        sum += *k_val;
     }
     for k in &mut kernel {
         *k /= sum;
@@ -145,10 +141,10 @@ pub fn peb_diffuse(latent: &mut LatentImage, diffusion_nm: f64, pixel_nm: f64) {
     for i in 0..ny {
         for j in 0..nx {
             let mut val = 0.0;
-            for k in 0..kernel_size {
+            for (k, &k_val) in kernel.iter().enumerate().take(kernel_size) {
                 let jj = j as i64 + k as i64 - kernel_radius as i64;
                 let jj = jj.clamp(0, nx as i64 - 1) as usize;
-                val += latent.pac[[i, jj]] * kernel[k];
+                val += latent.pac[[i, jj]] * k_val;
             }
             temp[[i, j]] = val;
         }
@@ -158,10 +154,10 @@ pub fn peb_diffuse(latent: &mut LatentImage, diffusion_nm: f64, pixel_nm: f64) {
     for i in 0..ny {
         for j in 0..nx {
             let mut val = 0.0;
-            for k in 0..kernel_size {
+            for (k, &k_val) in kernel.iter().enumerate().take(kernel_size) {
                 let ii = i as i64 + k as i64 - kernel_radius as i64;
                 let ii = ii.clamp(0, ny as i64 - 1) as usize;
-                val += temp[[ii, j]] * kernel[k];
+                val += temp[[ii, j]] * k_val;
             }
             latent.pac[[i, j]] = val;
         }
@@ -178,16 +174,16 @@ pub fn development_rate(latent: &LatentImage, params: &ResistParams) -> Array2<f
                 0.01 // minimal development (unexposed)
             }
         }
-        DevelopmentModel::Mack {
-            rmax,
-            rmin,
-            mth,
-            n,
-        } => {
-            let a = (n + 1.0) / (n - 1.0) * (1.0 - mth).powf(*n);
+        DevelopmentModel::Mack { rmax, rmin, mth, n } => {
             let m_clamped = m.clamp(0.0, 1.0);
-            let one_minus_m_n = (1.0 - m_clamped).powf(*n);
-            rmax * (a + 1.0) * one_minus_m_n / (a + one_minus_m_n) + rmin
+            if (n - 1.0).abs() < 1e-12 {
+                // Fallback for n=1 singularity: linear interpolation
+                rmax * (1.0 - m_clamped) + rmin
+            } else {
+                let a = (n + 1.0) / (n - 1.0) * (1.0 - mth).powf(*n);
+                let one_minus_m_n = (1.0 - m_clamped).powf(*n);
+                rmax * (a + 1.0) * one_minus_m_n / (a + one_minus_m_n) + rmin
+            }
         }
     })
 }
@@ -327,7 +323,7 @@ mod tests {
     #[test]
     fn test_development_profile() {
         let mut pac = Array2::from_elem((64, 64), 0.95); // almost unexposed
-        // Create exposed region in center
+                                                         // Create exposed region in center
         for j in 28..36 {
             for i in 0..64 {
                 pac[[i, j]] = 0.1;
@@ -348,6 +344,72 @@ mod tests {
             "Exposed region height ({}) should be less than unexposed ({})",
             center_height,
             edge_height
+        );
+    }
+
+    #[test]
+    fn test_mack_n_near_one_no_panic() {
+        let params = ResistParams {
+            development: DevelopmentModel::Mack {
+                rmax: 100.0,
+                rmin: 0.1,
+                mth: 0.5,
+                n: 1.001, // near-singular n~1
+            },
+            ..ResistParams::vuv_fluoropolymer()
+        };
+        let pac = Array2::from_elem((1, 1), 0.5);
+        let latent = LatentImage { pac };
+        let rate = development_rate(&latent, &params);
+        assert!(
+            rate[[0, 0]].is_finite(),
+            "Rate should be finite for n near 1"
+        );
+    }
+
+    #[test]
+    fn test_expose_zero_dose_pac_one() {
+        let aerial = Array2::from_elem((64, 64), 0.8);
+        let params = ResistParams::vuv_fluoropolymer();
+        let latent = expose(&aerial, 0.0, &params);
+        for &m in latent.pac.iter() {
+            assert_relative_eq!(m, 1.0, epsilon = 1e-10);
+        }
+    }
+
+    #[test]
+    fn test_develop_zero_time_full_thickness() {
+        let pac = Array2::from_elem((64, 64), 0.1); // fully exposed
+        let params = ResistParams::vuv_fluoropolymer();
+        let latent = LatentImage { pac };
+        let profile = develop(&latent, &params, 0.0, 2.0);
+        for &h in &profile.height_nm {
+            assert_relative_eq!(h, params.thickness_nm, epsilon = 1e-10);
+        }
+    }
+
+    #[test]
+    fn test_threshold_model_exposed() {
+        let params = ResistParams {
+            development: DevelopmentModel::Threshold { threshold: 0.5 },
+            ..ResistParams::vuv_fluoropolymer()
+        };
+        // m = 0.3 is below threshold 0.5 => exposed => fast development rate
+        let pac = Array2::from_elem((1, 1), 0.3);
+        let latent = LatentImage { pac };
+        let rate = development_rate(&latent, &params);
+        assert!(
+            rate[[0, 0]] > 100.0,
+            "Exposed region should have high development rate"
+        );
+
+        // m = 0.8 is above threshold => unexposed => slow rate
+        let pac2 = Array2::from_elem((1, 1), 0.8);
+        let latent2 = LatentImage { pac: pac2 };
+        let rate2 = development_rate(&latent2, &params);
+        assert!(
+            rate2[[0, 0]] < 1.0,
+            "Unexposed region should have low development rate"
         );
     }
 }

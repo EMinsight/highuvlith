@@ -86,21 +86,18 @@ impl PySimulationEngine {
     }
 
     /// Measure CD at given dose and focus.
+    #[allow(unused_variables)]
     #[pyo3(signature = (dose_mj_cm2=30.0, focus_nm=0.0, threshold=0.3))]
-    fn measure_cd(
-        &self,
-        dose_mj_cm2: f64,
-        focus_nm: f64,
-        threshold: f64,
-    ) -> PyResult<f64> {
+    fn measure_cd(&self, dose_mj_cm2: f64, focus_nm: f64, threshold: f64) -> PyResult<f64> {
         let aerial = self.engine.compute(&self.mask.inner, focus_nm);
         let field = self.grid.inner.field_size_nm();
         let half = field / 2.0;
 
-        metrics::measure_cd_2d(&aerial.data, -half, half, threshold)
-            .ok_or_else(|| {
-                pyo3::exceptions::PyRuntimeError::new_err("Could not measure CD: no threshold crossings found")
-            })
+        metrics::measure_cd_2d(&aerial.data, -half, half, threshold).ok_or_else(|| {
+            pyo3::exceptions::PyRuntimeError::new_err(
+                "Could not measure CD: no threshold crossings found",
+            )
+        })
     }
 
     /// Compute resist profile at given dose and focus.
@@ -141,6 +138,31 @@ impl PySimulationEngine {
     /// Number of SOCS kernels in the decomposition.
     fn num_kernels(&self) -> usize {
         self.engine.num_kernels()
+    }
+
+    #[getter]
+    fn source(&self) -> PySourceConfig {
+        self.source.clone()
+    }
+
+    #[getter]
+    fn optics(&self) -> PyOpticsConfig {
+        self.optics.clone()
+    }
+
+    #[getter]
+    fn mask(&self) -> PyMaskConfig {
+        self.mask.clone()
+    }
+
+    #[getter]
+    fn resist(&self) -> PyResistConfig {
+        self.resist.clone()
+    }
+
+    #[getter]
+    fn grid(&self) -> PyGridConfig {
+        self.grid.clone()
     }
 
     fn __repr__(&self) -> String {

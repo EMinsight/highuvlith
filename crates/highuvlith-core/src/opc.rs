@@ -49,9 +49,67 @@ impl OpcRuleTable {
                 }
             }
             MaskFeature::Polygon { vertices } => {
-                // For polygons, apply uniform edge bias (simplified)
+                // Determine characteristic width from bounding box
+                let (min_x, max_x) = vertices
+                    .iter()
+                    .fold((f64::INFINITY, f64::NEG_INFINITY), |(mn, mx), &(x, _)| {
+                        (mn.min(x), mx.max(x))
+                    });
+                let bb_width = max_x - min_x;
+                let bias = self.find_bias(bb_width);
+
+                if bias.abs() < 1e-15 || vertices.len() < 3 {
+                    return MaskFeature::Polygon {
+                        vertices: vertices.clone(),
+                    };
+                }
+
+                // Offset each vertex along the average outward normal of its
+                // two adjacent edges. This is exact for convex polygons.
+                let n = vertices.len();
+                let mut new_verts = Vec::with_capacity(n);
+                for i in 0..n {
+                    let prev = vertices[(i + n - 1) % n];
+                    let curr = vertices[i];
+                    let next = vertices[(i + 1) % n];
+
+                    // Edge vectors
+                    let (dx1, dy1) = (curr.0 - prev.0, curr.1 - prev.1);
+                    let (dx2, dy2) = (next.0 - curr.0, next.1 - curr.1);
+
+                    // Outward normals (assuming CCW winding => outward is to the right)
+                    let len1 = (dx1 * dx1 + dy1 * dy1).sqrt();
+                    let len2 = (dx2 * dx2 + dy2 * dy2).sqrt();
+
+                    if len1 < 1e-15 || len2 < 1e-15 {
+                        new_verts.push(curr);
+                        continue;
+                    }
+
+                    let (nx1, ny1) = (dy1 / len1, -dx1 / len1);
+                    let (nx2, ny2) = (dy2 / len2, -dx2 / len2);
+
+                    // Average outward normal at vertex
+                    let avg_nx = nx1 + nx2;
+                    let avg_ny = ny1 + ny2;
+                    let avg_len = (avg_nx * avg_nx + avg_ny * avg_ny).sqrt();
+
+                    if avg_len < 1e-15 {
+                        new_verts.push(curr);
+                        continue;
+                    }
+
+                    // Miter offset: to move each edge outward by `bias`, the
+                    // vertex moves by bias/cos(half_angle) along the bisector.
+                    // With avg = n1+n2, |avg| = 2*cos(half_angle), so the
+                    // offset vector is avg * 2*bias / |avg|^2.
+                    let avg_len_sq = avg_nx * avg_nx + avg_ny * avg_ny;
+                    let factor = 2.0 * bias / avg_len_sq;
+                    new_verts.push((curr.0 + avg_nx * factor, curr.1 + avg_ny * factor));
+                }
+
                 MaskFeature::Polygon {
-                    vertices: vertices.clone(),
+                    vertices: new_verts,
                 }
             }
         }
@@ -92,8 +150,7 @@ pub fn model_based_opc(
         // Simulate current mask
         let aerial = engine.compute(&current_mask, 0.0);
         let measured_cd =
-            metrics::measure_cd_2d(&aerial.data, -half, half, cd_threshold)
-                .unwrap_or(0.0);
+            metrics::measure_cd_2d(&aerial.data, -half, half, cd_threshold).unwrap_or(0.0);
 
         let error = measured_cd - target_cd_nm;
 
@@ -195,7 +252,11 @@ mod tests {
         let biased = rules.apply(&mask);
         match &biased.features[0] {
             MaskFeature::Rect { w, .. } => {
-                assert!((w - 75.0).abs() < 1e-10, "Expected 65 + 2*5 = 75, got {}", w);
+                assert!(
+                    (w - 75.0).abs() < 1e-10,
+                    "Expected 65 + 2*5 = 75, got {}",
+                    w
+                );
             }
             _ => panic!("Expected Rect"),
         }
@@ -228,6 +289,78 @@ mod tests {
                 assert!((w - 200.0).abs() < 1e-10, "No rule should match");
             }
             _ => panic!("Expected Rect"),
+        }
+    }
+
+    #[test]
+    fn test_polygon_opc_applies_bias() {
+        let rules = OpcRuleTable {
+            rules: vec![OpcRule {
+                min_width_nm: 50.0,
+                max_width_nm: 200.0,
+                bias_nm: 5.0,
+            }],
+        };
+
+        // Square polygon centered at origin, 100 nm wide (CCW winding)
+        let mask = Mask {
+            mask_type: MaskType::Binary,
+            features: vec![MaskFeature::Polygon {
+                vertices: vec![(-50.0, -50.0), (50.0, -50.0), (50.0, 50.0), (-50.0, 50.0)],
+            }],
+            dark_field: false,
+        };
+
+        let biased = rules.apply(&mask);
+        match &biased.features[0] {
+            MaskFeature::Polygon { vertices } => {
+                assert_eq!(vertices.len(), 4);
+                // Each vertex of the square should move outward by ~5 nm
+                // along the diagonal (bias applied to each edge).
+                // The bounding box width of the biased polygon should be
+                // approximately 100 + 2*5 = 110 nm.
+                let (min_x, max_x) = vertices
+                    .iter()
+                    .fold((f64::INFINITY, f64::NEG_INFINITY), |(mn, mx), &(x, _)| {
+                        (mn.min(x), mx.max(x))
+                    });
+                let biased_width = max_x - min_x;
+                assert!(
+                    (biased_width - 110.0).abs() < 1.0,
+                    "Expected biased width ~110, got {}",
+                    biased_width
+                );
+            }
+            _ => panic!("Expected Polygon"),
+        }
+    }
+
+    #[test]
+    fn test_polygon_no_bias_when_no_rule() {
+        let rules = OpcRuleTable {
+            rules: vec![OpcRule {
+                min_width_nm: 200.0,
+                max_width_nm: 300.0,
+                bias_nm: 5.0,
+            }],
+        };
+
+        let mask = Mask {
+            mask_type: MaskType::Binary,
+            features: vec![MaskFeature::Polygon {
+                vertices: vec![(-50.0, -50.0), (50.0, -50.0), (50.0, 50.0), (-50.0, 50.0)],
+            }],
+            dark_field: false,
+        };
+
+        let biased = rules.apply(&mask);
+        match &biased.features[0] {
+            MaskFeature::Polygon { vertices } => {
+                // No matching rule for width=100, vertices should be unchanged
+                assert!((vertices[0].0 - (-50.0)).abs() < 1e-10);
+                assert!((vertices[1].0 - 50.0).abs() < 1e-10);
+            }
+            _ => panic!("Expected Polygon"),
         }
     }
 

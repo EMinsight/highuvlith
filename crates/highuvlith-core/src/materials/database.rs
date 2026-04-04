@@ -100,7 +100,10 @@ impl MaterialsDatabase {
             ],
         );
 
-        Self { sellmeier, fixed_nk }
+        Self {
+            sellmeier,
+            fixed_nk,
+        }
     }
 
     /// Get the complex refractive index of a material at a given wavelength.
@@ -113,7 +116,7 @@ impl MaterialsDatabase {
     ) -> crate::error::Result<Complex64> {
         // Try Sellmeier first
         if let Some(coeffs) = self.sellmeier.get(material) {
-            let n = coeffs.refractive_index(wavelength_nm);
+            let n = coeffs.refractive_index(wavelength_nm)?;
             return Ok(Complex64::new(n, 0.0));
         }
 
@@ -128,13 +131,9 @@ impl MaterialsDatabase {
     }
 
     /// Get dispersion dn/dlambda for Sellmeier materials.
-    pub fn dispersion(
-        &self,
-        material: &str,
-        wavelength_nm: f64,
-    ) -> crate::error::Result<f64> {
+    pub fn dispersion(&self, material: &str, wavelength_nm: f64) -> crate::error::Result<f64> {
         if let Some(coeffs) = self.sellmeier.get(material) {
-            return Ok(coeffs.dispersion(wavelength_nm));
+            return coeffs.dispersion(wavelength_nm);
         }
         Err(crate::error::LithographyError::MaterialNotFound(
             material.to_string(),

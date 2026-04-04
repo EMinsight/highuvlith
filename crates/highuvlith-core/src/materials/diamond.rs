@@ -48,11 +48,7 @@ impl DiamondProperties {
 
     /// Estimate maximum dose (mJ/cm²) before thermal distortion exceeds tolerance.
     /// Simple model: ΔT = dose / (ρ × c_p × thickness), distortion = α × ΔT × area^0.5
-    pub fn max_dose_mj_cm2(
-        &self,
-        thickness_um: f64,
-        distortion_tolerance_nm: f64,
-    ) -> f64 {
+    pub fn max_dose_mj_cm2(&self, thickness_um: f64, distortion_tolerance_nm: f64) -> f64 {
         let specific_heat = 0.509; // J/(g·K) for diamond
         let rho_cgs = self.density; // g/cm³
         let thickness_cm = thickness_um * 1e-4;
@@ -69,7 +65,7 @@ impl DiamondProperties {
 pub fn resist_on_diamond(resist_thickness_nm: f64, wavelength_nm: f64) -> FilmStack {
     let sellmeier = diamond_sellmeier();
     let n_diamond = if wavelength_nm > 225.0 {
-        sellmeier.refractive_index(wavelength_nm)
+        sellmeier.refractive_index(wavelength_nm).unwrap_or(2.7)
     } else {
         2.7 // approximate for deep UV (absorbing regime)
     };
@@ -88,7 +84,7 @@ pub fn resist_on_diamond(resist_thickness_nm: f64, wavelength_nm: f64) -> FilmSt
 pub fn diamond_on_silicon(diamond_thickness_nm: f64, wavelength_nm: f64) -> FilmStack {
     let sellmeier = diamond_sellmeier();
     let n_diamond = if wavelength_nm > 225.0 {
-        sellmeier.refractive_index(wavelength_nm)
+        sellmeier.refractive_index(wavelength_nm).unwrap_or(2.7)
     } else {
         2.7
     };
@@ -123,7 +119,7 @@ mod tests {
     #[test]
     fn test_diamond_refractive_index() {
         let s = diamond_sellmeier();
-        let n = s.refractive_index(589.0); // sodium D line
+        let n = s.refractive_index(589.0).unwrap(); // sodium D line
         assert_relative_eq!(n, 2.417, epsilon = 0.01);
     }
 
@@ -131,7 +127,11 @@ mod tests {
     fn test_diamond_uv_cutoff() {
         let props = DiamondProperties::default();
         let cutoff = props.uv_cutoff_nm();
-        assert!(cutoff > 225.0 && cutoff < 230.0, "Diamond UV cutoff should be ~227nm, got {}", cutoff);
+        assert!(
+            cutoff > 225.0 && cutoff < 230.0,
+            "Diamond UV cutoff should be ~227nm, got {}",
+            cutoff
+        );
     }
 
     #[test]
@@ -139,14 +139,22 @@ mod tests {
         let props = DiamondProperties::default();
         // Diamond should tolerate very high doses due to thermal conductivity
         let max_dose = props.max_dose_mj_cm2(500.0, 1.0);
-        assert!(max_dose > 100.0, "Diamond should tolerate high dose, got {} mJ/cm²", max_dose);
+        assert!(
+            max_dose > 100.0,
+            "Diamond should tolerate high dose, got {} mJ/cm²",
+            max_dose
+        );
     }
 
     #[test]
     fn test_xray_transmission_high_energy() {
         // At 10 keV, 100μm diamond should be highly transparent
         let t = xray_transmission(100.0, 10.0);
-        assert!(t > 0.9, "Diamond should be >90% transparent at 10 keV, got {:.1}%", t * 100.0);
+        assert!(
+            t > 0.9,
+            "Diamond should be >90% transparent at 10 keV, got {:.1}%",
+            t * 100.0
+        );
     }
 
     #[test]

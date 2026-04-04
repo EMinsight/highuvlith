@@ -26,6 +26,15 @@ pub enum LithographyError {
 
     #[error("dimension mismatch: expected {expected}, got {got}")]
     DimensionMismatch { expected: String, got: String },
+
+    #[error("numerical error: {0}")]
+    NumericalError(String),
+
+    #[error("I/O error: {0}")]
+    IoError(#[from] std::io::Error),
+
+    #[error("internal error: {0}")]
+    InternalError(String),
 }
 
 pub type Result<T> = std::result::Result<T, LithographyError>;

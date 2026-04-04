@@ -36,4 +36,6 @@ def save_result(
 def load_result(path: str | Path) -> dict[str, np.ndarray]:
     """Load simulation result from .npz file."""
     path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"Result file not found: {path}")
     return dict(np.load(path))

@@ -36,7 +36,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyProcessWindowResult>()?;
 
     // MNSL module
-    register_mnsl_module(&m)?;
+    register_mnsl_module(m)?;
 
     Ok(())
 }

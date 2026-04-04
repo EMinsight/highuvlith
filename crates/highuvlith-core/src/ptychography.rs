@@ -127,10 +127,9 @@ pub fn epie_reconstruct(
 
                         // Object update
                         if probe_max_sq > 1e-30 {
-                            object[[oi, oj]] += config.object_step_size
-                                * probe[[i, j]].conj()
-                                * diff
-                                / probe_max_sq;
+                            object[[oi, oj]] +=
+                                config.object_step_size * probe[[i, j]].conj() * diff
+                                    / probe_max_sq;
                         }
                     }
                 }
@@ -157,10 +156,9 @@ pub fn epie_reconstruct(
                         let oj = col + j;
                         if oi < obj_ny && oj < obj_nx {
                             let diff = psi[[i, j]] - exit_wave[[i, j]];
-                            probe[[i, j]] += config.probe_step_size
-                                * object[[oi, oj]].conj()
-                                * diff
-                                / obj_max_sq;
+                            probe[[i, j]] +=
+                                config.probe_step_size * object[[oi, oj]].conj() * diff
+                                    / obj_max_sq;
                         }
                     }
                 }
@@ -247,9 +245,18 @@ mod tests {
         let probe = make_test_probe(16);
         let object = make_test_object(32);
         let positions = vec![
-            (0, 0), (4, 0), (8, 0), (12, 0),
-            (0, 4), (4, 4), (8, 4), (12, 4),
-            (0, 8), (4, 8), (8, 8), (12, 8),
+            (0, 0),
+            (4, 0),
+            (8, 0),
+            (12, 0),
+            (0, 4),
+            (4, 4),
+            (8, 4),
+            (12, 4),
+            (0, 8),
+            (4, 8),
+            (8, 8),
+            (12, 8),
         ];
 
         // Simulate ground truth patterns

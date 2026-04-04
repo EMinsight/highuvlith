@@ -23,8 +23,32 @@ impl PySourceConfig {
         sigma_outer: f64,
         bandwidth_pm: f64,
         spectral_samples: usize,
-    ) -> Self {
-        Self {
+    ) -> PyResult<Self> {
+        if wavelength_nm <= 0.0 {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "wavelength_nm must be positive, got {}",
+                wavelength_nm
+            )));
+        }
+        if sigma_outer <= 0.0 || sigma_outer > 1.0 {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "sigma_outer must be in (0, 1.0], got {}",
+                sigma_outer
+            )));
+        }
+        if bandwidth_pm < 0.0 {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "bandwidth_pm must be >= 0, got {}",
+                bandwidth_pm
+            )));
+        }
+        if spectral_samples < 1 {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "spectral_samples must be >= 1, got {}",
+                spectral_samples
+            )));
+        }
+        Ok(Self {
             inner: VuvSource {
                 wavelength_nm,
                 bandwidth_pm,
@@ -34,25 +58,25 @@ impl PySourceConfig {
                 rep_rate_hz: 4000.0,
                 illumination: IlluminationShape::Conventional { sigma: sigma_outer },
             },
-        }
+        })
     }
 
     /// Create F2 laser (157nm) source.
     #[staticmethod]
     #[pyo3(signature = (sigma=0.7))]
-    fn f2_laser(sigma: f64) -> Self {
-        Self {
-            inner: VuvSource::f2_laser(sigma),
-        }
+    fn f2_laser(sigma: f64) -> PyResult<Self> {
+        let inner = VuvSource::f2_laser(sigma)
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner })
     }
 
     /// Create Ar2 excimer (126nm) source.
     #[staticmethod]
     #[pyo3(signature = (sigma=0.7))]
-    fn ar2_laser(sigma: f64) -> Self {
-        Self {
-            inner: VuvSource::ar2_laser(sigma),
-        }
+    fn ar2_laser(sigma: f64) -> PyResult<Self> {
+        let inner = VuvSource::ar2_laser(sigma)
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner })
     }
 
     #[getter]
@@ -63,6 +87,19 @@ impl PySourceConfig {
     #[getter]
     fn bandwidth_pm(&self) -> f64 {
         self.inner.bandwidth_pm
+    }
+
+    #[getter]
+    fn sigma_outer(&self) -> f64 {
+        match &self.inner.illumination {
+            IlluminationShape::Conventional { sigma } => *sigma,
+            _ => 0.0,
+        }
+    }
+
+    #[getter]
+    fn spectral_samples(&self) -> usize {
+        self.inner.spectral_samples
     }
 
     fn __repr__(&self) -> String {
@@ -84,15 +121,35 @@ pub struct PyOpticsConfig {
 impl PyOpticsConfig {
     #[new]
     #[pyo3(signature = (numerical_aperture=0.75, reduction=4.0, flare_fraction=0.02))]
-    fn new(numerical_aperture: f64, reduction: f64, flare_fraction: f64) -> Self {
-        Self {
+    fn new(numerical_aperture: f64, reduction: f64, flare_fraction: f64) -> PyResult<Self> {
+        if numerical_aperture <= 0.0 || numerical_aperture > 1.0 {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "numerical_aperture must be in (0, 1.0], got {}",
+                numerical_aperture
+            )));
+        }
+        if reduction <= 0.0 {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "reduction must be positive, got {}",
+                reduction
+            )));
+        }
+        if !(0.0..=1.0).contains(&flare_fraction) {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "flare_fraction must be in [0, 1.0], got {}",
+                flare_fraction
+            )));
+        }
+        let base = ProjectionOptics::new(numerical_aperture)
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+        Ok(Self {
             inner: ProjectionOptics {
                 na: numerical_aperture,
                 reduction,
                 flare_fraction,
-                ..ProjectionOptics::new(numerical_aperture)
+                ..base
             },
-        }
+        })
     }
 
     /// Add a Zernike aberration coefficient.
@@ -105,6 +162,16 @@ impl PyOpticsConfig {
     #[getter]
     fn numerical_aperture(&self) -> f64 {
         self.inner.na
+    }
+
+    #[getter]
+    fn reduction(&self) -> f64 {
+        self.inner.reduction
+    }
+
+    #[getter]
+    fn flare_fraction(&self) -> f64 {
+        self.inner.flare_fraction
     }
 
     fn rayleigh_resolution(&self, wavelength_nm: f64) -> f64 {
@@ -130,18 +197,18 @@ pub struct PyMaskConfig {
 impl PyMaskConfig {
     /// Create a line/space pattern.
     #[staticmethod]
-    fn line_space(cd_nm: f64, pitch_nm: f64) -> Self {
-        Self {
-            inner: Mask::line_space(cd_nm, pitch_nm),
-        }
+    fn line_space(cd_nm: f64, pitch_nm: f64) -> PyResult<Self> {
+        let inner = Mask::line_space(cd_nm, pitch_nm)
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner })
     }
 
     /// Create a contact hole array.
     #[staticmethod]
-    fn contact_hole(diameter_nm: f64, pitch_x_nm: f64, pitch_y_nm: f64) -> Self {
-        Self {
-            inner: Mask::contact_hole(diameter_nm, pitch_x_nm, pitch_y_nm),
-        }
+    fn contact_hole(diameter_nm: f64, pitch_x_nm: f64, pitch_y_nm: f64) -> PyResult<Self> {
+        let inner = Mask::contact_hole(diameter_nm, pitch_x_nm, pitch_y_nm)
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+        Ok(Self { inner })
     }
 
     fn __repr__(&self) -> String {
@@ -175,6 +242,18 @@ impl PyResistConfig {
         peb_diffusion_nm: f64,
         model: &str,
     ) -> PyResult<Self> {
+        if thickness_nm <= 0.0 {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "thickness_nm must be positive, got {}",
+                thickness_nm
+            )));
+        }
+        if peb_diffusion_nm < 0.0 {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "peb_diffusion_nm must be >= 0, got {}",
+                peb_diffusion_nm
+            )));
+        }
         let development = match model {
             "threshold" => DevelopmentModel::Threshold { threshold: 0.5 },
             "mack" => DevelopmentModel::default(),
@@ -204,6 +283,31 @@ impl PyResistConfig {
         Self {
             inner: ResistParams::vuv_fluoropolymer(),
         }
+    }
+
+    #[getter]
+    fn thickness_nm(&self) -> f64 {
+        self.inner.thickness_nm
+    }
+
+    #[getter]
+    fn dill_a(&self) -> f64 {
+        self.inner.dill_a
+    }
+
+    #[getter]
+    fn dill_b(&self) -> f64 {
+        self.inner.dill_b
+    }
+
+    #[getter]
+    fn dill_c(&self) -> f64 {
+        self.inner.dill_c
+    }
+
+    #[getter]
+    fn peb_diffusion_nm(&self) -> f64 {
+        self.inner.peb_diffusion_nm
     }
 
     fn __repr__(&self) -> String {
@@ -293,9 +397,8 @@ impl PyGridConfig {
     #[new]
     #[pyo3(signature = (size=512, pixel_nm=1.0))]
     fn new(size: usize, pixel_nm: f64) -> PyResult<Self> {
-        let inner = GridConfig::new(size, pixel_nm).map_err(|e| {
-            pyo3::exceptions::PyValueError::new_err(e.to_string())
-        })?;
+        let inner = GridConfig::new(size, pixel_nm)
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
         Ok(Self { inner })
     }
 

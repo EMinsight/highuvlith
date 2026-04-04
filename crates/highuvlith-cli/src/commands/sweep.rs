@@ -12,6 +12,14 @@ fn parse_range(s: &str) -> anyhow::Result<Vec<f64>> {
     let start: f64 = parts[0].parse()?;
     let stop: f64 = parts[1].parse()?;
     let steps: usize = parts[2].parse()?;
+    if steps > 1 && start > stop {
+        anyhow::bail!(
+            "Invalid range: start ({}) > stop ({}) with steps = {}",
+            start,
+            stop,
+            steps
+        );
+    }
     if steps < 2 {
         return Ok(vec![start]);
     }
@@ -26,9 +34,10 @@ pub fn run(
     dose_range: Option<&str>,
 ) -> anyhow::Result<()> {
     let config = SimConfig::load(config_path)?;
+    config.validate()?;
     let source = config.to_source();
-    let optics = config.to_optics();
-    let mask = config.to_mask();
+    let optics = config.to_optics()?;
+    let mask = config.to_mask()?;
     let grid = config.to_grid()?;
 
     let focuses = parse_range(focus_range)?;
@@ -39,7 +48,12 @@ pub fn run(
     };
 
     let total = focuses.len() * doses.len();
-    eprintln!("Sweep: {} focuses × {} doses = {} points", focuses.len(), doses.len(), total);
+    eprintln!(
+        "Sweep: {} focuses × {} doses = {} points",
+        focuses.len(),
+        doses.len(),
+        total
+    );
 
     let engine = AerialImageEngine::new(&source, &optics, grid.clone(), 20)?;
     eprintln!("Engine: {} SOCS kernels", engine.num_kernels());
@@ -47,7 +61,9 @@ pub fn run(
     let pb = ProgressBar::new(total as u64);
     pb.set_style(
         ProgressStyle::default_bar()
-            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})")
+            .template(
+                "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})",
+            )
             .unwrap()
             .progress_chars("#>-"),
     );
@@ -76,7 +92,11 @@ pub fn run(
 
     pb.finish_with_message("Sweep complete");
     let elapsed = start.elapsed();
-    eprintln!("Total time: {:.2?} ({:.1?} per point)", elapsed, elapsed / total as u32);
+    eprintln!(
+        "Total time: {:.2?} ({:.1?} per point)",
+        elapsed,
+        elapsed / total as u32
+    );
 
     if let Some(out_path) = output {
         let output_json = serde_json::json!({
@@ -95,4 +115,38 @@ pub fn run(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_range_valid() {
+        let vals = parse_range("-200,200,5").unwrap();
+        assert_eq!(vals.len(), 5);
+        assert!((vals[0] - (-200.0)).abs() < 1e-10);
+        assert!((vals[4] - 200.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_parse_range_reversed_error() {
+        let result = parse_range("200,-200,5");
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("start"), "Error should mention start: {}", msg);
+    }
+
+    #[test]
+    fn test_parse_range_single_step() {
+        let vals = parse_range("100,200,1").unwrap();
+        assert_eq!(vals.len(), 1);
+        assert!((vals[0] - 100.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_parse_range_bad_format() {
+        assert!(parse_range("1,2").is_err());
+        assert!(parse_range("1,2,3,4").is_err());
+    }
 }

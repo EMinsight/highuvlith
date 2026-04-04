@@ -1,6 +1,9 @@
 use approx::assert_relative_eq;
 use highuvlith_core::{
-    mnsl::{MnslConfig, MnslEngine, NanosphereArray, SpherePacking, SubstrateCoupling, simulate_moire_emission},
+    mnsl::{
+        simulate_moire_emission, MnslConfig, MnslEngine, NanosphereArray, SpherePacking,
+        SubstrateCoupling,
+    },
     types::GridConfig,
 };
 
@@ -147,11 +150,18 @@ fn test_emission_enhancement_factor() {
 
     // Enhancement factors should be >= 1.0 everywhere
     for &enhancement in result.enhancement_factors.data.iter() {
-        assert!(enhancement >= 1.0, "Enhancement factor {} should be >= 1.0", enhancement);
+        assert!(
+            enhancement >= 1.0,
+            "Enhancement factor {} should be >= 1.0",
+            enhancement
+        );
     }
 
     // There should be some enhancement (not all values equal to 1.0)
-    let max_enhancement = result.enhancement_factors.data.iter()
+    let max_enhancement = result
+        .enhancement_factors
+        .data
+        .iter()
         .cloned()
         .fold(0.0f64, f64::max);
     assert!(max_enhancement > 1.0, "Maximum enhancement should be > 1.0");
@@ -165,13 +175,24 @@ fn test_peak_finding() {
     let result = simulate_moire_emission(200.0, 300.0, 5.0, 100.0, grid);
 
     // Should find some peaks
-    assert!(!result.peak_positions.is_empty(), "Should find at least some emission peaks");
+    assert!(
+        !result.peak_positions.is_empty(),
+        "Should find at least some emission peaks"
+    );
 
     // Peak positions should be within the simulation domain
 
     for &(x, y) in &result.peak_positions {
-        assert!(x >= -half_field && x <= half_field, "Peak x-position {} outside domain", x);
-        assert!(y >= -half_field && y <= half_field, "Peak y-position {} outside domain", y);
+        assert!(
+            x >= -half_field && x <= half_field,
+            "Peak x-position {} outside domain",
+            x
+        );
+        assert!(
+            y >= -half_field && y <= half_field,
+            "Peak y-position {} outside domain",
+            y
+        );
     }
 }
 
@@ -197,7 +218,10 @@ fn test_different_sphere_materials() {
     assert!(ps_result.total_emission_power > 0.0);
 
     // Results should be different due to different refractive indices
-    assert_ne!(silica_result.total_emission_power, ps_result.total_emission_power);
+    assert_ne!(
+        silica_result.total_emission_power,
+        ps_result.total_emission_power
+    );
 }
 
 #[test]

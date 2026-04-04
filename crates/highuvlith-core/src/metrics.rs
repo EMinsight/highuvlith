@@ -5,11 +5,7 @@ use ndarray::Array2;
 ///
 /// Returns the width (in nm) of the feature above/below threshold.
 /// For bright-field L/S patterns, this measures the space width.
-pub fn measure_cd(
-    intensity_profile: &[f64],
-    x_nm: &[f64],
-    threshold: f64,
-) -> Option<f64> {
+pub fn measure_cd(intensity_profile: &[f64], x_nm: &[f64], threshold: f64) -> Option<f64> {
     if intensity_profile.len() != x_nm.len() || intensity_profile.len() < 2 {
         return None;
     }
@@ -30,7 +26,7 @@ pub fn measure_cd(
 
     if crossings.len() >= 2 {
         // Return the width between the two innermost crossings (nearest to center)
-        crossings.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        crossings.sort_by(|a, b| a.total_cmp(b));
 
         // Find the pair closest to the center of the field
         let center = (x_nm[0] + x_nm[x_nm.len() - 1]) / 2.0;
@@ -78,11 +74,7 @@ pub fn measure_cd_2d(
 /// NILS = (d/dx ln(I)) * w = (w / I) * (dI/dx) at the edge
 ///
 /// Higher NILS indicates better image quality and process latitude.
-pub fn nils(
-    intensity_profile: &[f64],
-    x_nm: &[f64],
-    threshold: f64,
-) -> Option<f64> {
+pub fn nils(intensity_profile: &[f64], x_nm: &[f64], threshold: f64) -> Option<f64> {
     if intensity_profile.len() != x_nm.len() || intensity_profile.len() < 3 {
         return None;
     }
@@ -178,11 +170,7 @@ mod tests {
 
     #[test]
     fn test_contrast_full() {
-        let image = Array2::from_shape_vec(
-            (2, 2),
-            vec![0.0, 1.0, 0.0, 1.0],
-        )
-        .unwrap();
+        let image = Array2::from_shape_vec((2, 2), vec![0.0, 1.0, 0.0, 1.0]).unwrap();
         assert_relative_eq!(image_contrast(&image), 1.0, epsilon = 1e-10);
     }
 
@@ -206,5 +194,62 @@ mod tests {
         let nils_val = nils(&intensity, &x_nm, 0.5);
         assert!(nils_val.is_some());
         assert!(nils_val.unwrap() > 0.0);
+    }
+
+    #[test]
+    fn test_cd_no_crossings_returns_none() {
+        // Flat profile (all same value) has no threshold crossings
+        let n = 100;
+        let x_nm: Vec<f64> = (0..n).map(|i| i as f64).collect();
+        let intensity: Vec<f64> = vec![0.8; n];
+        assert!(measure_cd(&intensity, &x_nm, 0.5).is_none());
+    }
+
+    #[test]
+    fn test_cd_empty_profile() {
+        let result = measure_cd(&[], &[], 0.5);
+        assert!(result.is_none());
+        // Single-element slices (len < 2) should also return None
+        let result2 = measure_cd(&[1.0], &[0.0], 0.5);
+        assert!(result2.is_none());
+    }
+
+    #[test]
+    fn test_nils_flat_profile_returns_none() {
+        // Flat profile has no threshold crossings, so NILS is None
+        let n = 100;
+        let x_nm: Vec<f64> = (0..n).map(|i| -50.0 + i as f64).collect();
+        let intensity: Vec<f64> = vec![0.7; n];
+        assert!(nils(&intensity, &x_nm, 0.5).is_none());
+    }
+
+    #[test]
+    fn test_mtf_uniform_is_zero() {
+        // Uniform image has zero modulation
+        let image = Array2::from_elem((64, 64), 0.5);
+        assert_relative_eq!(mtf_from_image(&image), 0.0, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_cd_2d_measure() {
+        // Create a step image: left half = 0, right half = 1
+        // with a transition at x=0 and another at some other position
+        let n = 128;
+        let mut image = Array2::zeros((n, n));
+        // Create a bright stripe in the center ~25% of the columns wide
+        let left = n / 4;
+        let right = 3 * n / 4;
+        for i in 0..n {
+            for j in left..right {
+                image[[i, j]] = 1.0;
+            }
+        }
+        // x range: -128 to 128 nm (pixel_nm = 2.0)
+        let x_min = -128.0;
+        let x_max = 128.0;
+        let cd = measure_cd_2d(&image, x_min, x_max, 0.5);
+        assert!(cd.is_some());
+        // The stripe is half the width = 128nm, so CD should be ~128nm
+        assert_relative_eq!(cd.unwrap(), 128.0, epsilon = 5.0);
     }
 }

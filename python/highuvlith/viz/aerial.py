@@ -18,7 +18,6 @@ def plot_aerial(
 ):
     """Plot 2D aerial image intensity."""
     import matplotlib.pyplot as plt
-    import numpy as np
 
     if ax is None:
         fig, ax = plt.subplots(1, 1, figsize=(8, 6))
@@ -53,7 +52,6 @@ def plot_cross_section(
 ):
     """Plot 1D cross-section of aerial image along x at given y."""
     import matplotlib.pyplot as plt
-    import numpy as np
 
     if ax is None:
         fig, ax = plt.subplots(1, 1, figsize=(10, 4))

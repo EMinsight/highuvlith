@@ -104,6 +104,23 @@ impl PyAerialImageResult {
         metrics::nils(&profile, &x_nm, threshold)
     }
 
+    fn __eq__(&self, other: &Self) -> bool {
+        let bounds_eq = (self.x_min_nm - other.x_min_nm).abs() < 1e-9
+            && (self.x_max_nm - other.x_max_nm).abs() < 1e-9
+            && (self.y_min_nm - other.y_min_nm).abs() < 1e-9
+            && (self.y_max_nm - other.y_max_nm).abs() < 1e-9;
+        if !bounds_eq {
+            return false;
+        }
+        if self.intensity.shape() != other.intensity.shape() {
+            return false;
+        }
+        self.intensity
+            .iter()
+            .zip(other.intensity.iter())
+            .all(|(a, b)| (a - b).abs() < 1e-12)
+    }
+
     fn __repr__(&self) -> String {
         format!(
             "AerialImageResult({}x{}, x=[{:.1}, {:.1}]nm, y=[{:.1}, {:.1}]nm)",
@@ -154,6 +171,19 @@ impl PyResistProfileResult {
     #[getter]
     fn thickness_nm(&self) -> f64 {
         self.thickness_nm
+    }
+
+    fn __eq__(&self, other: &Self) -> bool {
+        if self.height_nm.len() != other.height_nm.len() {
+            return false;
+        }
+        if (self.thickness_nm - other.thickness_nm).abs() > 1e-9 {
+            return false;
+        }
+        self.height_nm
+            .iter()
+            .zip(other.height_nm.iter())
+            .all(|(a, b)| (a - b).abs() < 1e-12)
     }
 
     fn __repr__(&self) -> String {

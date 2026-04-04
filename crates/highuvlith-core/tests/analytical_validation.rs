@@ -27,11 +27,14 @@ fn coherent_source(wavelength_nm: f64) -> VuvSource {
 /// identical aerial images for a symmetric optical system.
 #[test]
 fn test_defocus_symmetry() {
-    let source = VuvSource::f2_laser(0.5);
-    let optics = ProjectionOptics::new(0.75);
-    let grid = GridConfig { size: 128, pixel_nm: 2.0 };
+    let source = VuvSource::f2_laser(0.5).unwrap();
+    let optics = ProjectionOptics::new(0.75).unwrap();
+    let grid = GridConfig {
+        size: 128,
+        pixel_nm: 2.0,
+    };
     let engine = AerialImageEngine::new(&source, &optics, grid, 15).unwrap();
-    let mask = Mask::line_space(65.0, 180.0);
+    let mask = Mask::line_space(65.0, 180.0).unwrap();
 
     let img_pos = engine.compute(&mask, 150.0);
     let img_neg = engine.compute(&mask, -150.0);
@@ -45,17 +48,20 @@ fn test_defocus_symmetry() {
 /// for dense features near the resolution limit.
 #[test]
 fn test_sigma_reduces_contrast() {
-    let optics = ProjectionOptics::new(0.75);
-    let grid = GridConfig { size: 128, pixel_nm: 2.0 };
-    let mask = Mask::line_space(65.0, 180.0);
+    let optics = ProjectionOptics::new(0.75).unwrap();
+    let grid = GridConfig {
+        size: 128,
+        pixel_nm: 2.0,
+    };
+    let mask = Mask::line_space(65.0, 180.0).unwrap();
 
     let src_low_sigma = VuvSource {
         illumination: IlluminationShape::Conventional { sigma: 0.3 },
-        ..VuvSource::f2_laser(0.3)
+        ..VuvSource::f2_laser(0.3).unwrap()
     };
     let src_high_sigma = VuvSource {
         illumination: IlluminationShape::Conventional { sigma: 0.9 },
-        ..VuvSource::f2_laser(0.9)
+        ..VuvSource::f2_laser(0.9).unwrap()
     };
 
     let engine_low = AerialImageEngine::new(&src_low_sigma, &optics, grid.clone(), 15).unwrap();
@@ -66,7 +72,12 @@ fn test_sigma_reduces_contrast() {
 
     // Higher sigma generally gives lower contrast for dense features
     // (this is a well-known result in partial coherence theory)
-    assert!(c_low > c_high * 0.9, "Low sigma contrast ({}) should exceed high sigma contrast ({})", c_low, c_high);
+    assert!(
+        c_low > c_high * 0.9,
+        "Low sigma contrast ({}) should exceed high sigma contrast ({})",
+        c_low,
+        c_high
+    );
 }
 
 /// Test: Quarter-wave anti-reflection coating gives minimum reflectance.
@@ -93,7 +104,11 @@ fn test_quarter_wave_ar_minimum() {
     }
 
     // The quarter-wave (factor=1.0) should have the minimum reflectance
-    let qw_r = reflectances.iter().find(|(f, _)| (*f - 1.0).abs() < 0.01).unwrap().1;
+    let qw_r = reflectances
+        .iter()
+        .find(|(f, _)| (*f - 1.0).abs() < 0.01)
+        .unwrap()
+        .1;
     for &(factor, r) in &reflectances {
         if (factor - 1.0).abs() > 0.01 {
             assert!(qw_r <= r + 1e-10,
@@ -111,8 +126,13 @@ fn test_fresnel_reflectance() {
         let stack = FilmStack::new_vuv(vec![], Complex64::new(n_sub, 0.0));
         let r = stack.reflectance(157.0, Polarization::Unpolarized);
         let expected = ((1.0 - n_sub) / (1.0 + n_sub)).powi(2);
-        assert!((r - expected).abs() < 1e-4,
-            "Fresnel reflectance mismatch for n={}: got {}, expected {}", n_sub, r, expected);
+        assert!(
+            (r - expected).abs() < 1e-4,
+            "Fresnel reflectance mismatch for n={}: got {}, expected {}",
+            n_sub,
+            r,
+            expected
+        );
     }
 }
 
@@ -123,19 +143,27 @@ fn test_intensity_non_negative_sweep() {
         for sigma in [0.3, 0.5, 0.7] {
             let source = VuvSource {
                 illumination: IlluminationShape::Conventional { sigma },
-                ..VuvSource::f2_laser(sigma)
+                ..VuvSource::f2_laser(sigma).unwrap()
             };
-            let optics = ProjectionOptics::new(na);
-            let grid = GridConfig { size: 64, pixel_nm: 2.0 };
+            let optics = ProjectionOptics::new(na).unwrap();
+            let grid = GridConfig {
+                size: 64,
+                pixel_nm: 2.0,
+            };
             let engine = AerialImageEngine::new(&source, &optics, grid, 10).unwrap();
-            let mask = Mask::line_space(65.0, 180.0);
+            let mask = Mask::line_space(65.0, 180.0).unwrap();
 
             for focus in [-200.0, 0.0, 200.0] {
                 let image = engine.compute(&mask, focus);
                 let min_val = image.data.iter().cloned().fold(f64::INFINITY, f64::min);
-                assert!(min_val >= -1e-10,
+                assert!(
+                    min_val >= -1e-10,
                     "Negative intensity {:.2e} at NA={}, sigma={}, focus={}",
-                    min_val, na, sigma, focus);
+                    min_val,
+                    na,
+                    sigma,
+                    focus
+                );
             }
         }
     }
@@ -145,17 +173,24 @@ fn test_intensity_non_negative_sweep() {
 /// on defocus (for a phase-only aberration, total energy is conserved).
 #[test]
 fn test_energy_conservation_defocus() {
-    let source = VuvSource::f2_laser(0.5);
-    let optics = ProjectionOptics::new(0.75);
-    let grid = GridConfig { size: 128, pixel_nm: 2.0 };
+    let source = VuvSource::f2_laser(0.5).unwrap();
+    let optics = ProjectionOptics::new(0.75).unwrap();
+    let grid = GridConfig {
+        size: 128,
+        pixel_nm: 2.0,
+    };
     let engine = AerialImageEngine::new(&source, &optics, grid, 15).unwrap();
-    let mask = Mask::line_space(65.0, 180.0);
+    let mask = Mask::line_space(65.0, 180.0).unwrap();
 
     let energy_focus0: f64 = engine.compute(&mask, 0.0).data.iter().sum();
     let energy_focus200: f64 = engine.compute(&mask, 200.0).data.iter().sum();
 
     // Energy should be approximately conserved (within flare adjustment)
-    assert_relative_eq!(energy_focus0, energy_focus200, epsilon = energy_focus0 * 0.05);
+    assert_relative_eq!(
+        energy_focus0,
+        energy_focus200,
+        epsilon = energy_focus0 * 0.05
+    );
 }
 
 /// Test: Brewster angle gives zero p-polarization reflectance for a dielectric.
@@ -165,6 +200,9 @@ fn test_brewster_angle_zero_reflection() {
     let brewster = n_sub.atan(); // atan(n2/n1) where n1=1.0 (vacuum)
     let stack = FilmStack::new_vuv(vec![], Complex64::new(n_sub, 0.0));
     let r_tm = stack.reflectance_at_angle(157.0, brewster, Polarization::TM);
-    assert!(r_tm < 1e-6,
-        "TM reflectance at Brewster's angle should be ~0, got {:.2e}", r_tm);
+    assert!(
+        r_tm < 1e-6,
+        "TM reflectance at Brewster's angle should be ~0, got {:.2e}",
+        r_tm
+    );
 }

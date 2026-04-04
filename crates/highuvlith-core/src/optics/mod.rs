@@ -46,20 +46,15 @@ pub trait OpticalSystem: Send + Sync {
 }
 
 /// Pupil apodization model (transmission variation across the pupil).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub enum Apodization {
     /// Uniform transmission.
+    #[default]
     Uniform,
     /// Radial transmission profile: T(rho) = 1 - alpha * rho^2.
     Quadratic { alpha: f64 },
     /// Gaussian apodization: T(rho) = exp(-alpha * rho^2).
     Gaussian { alpha: f64 },
-}
-
-impl Default for Apodization {
-    fn default() -> Self {
-        Self::Uniform
-    }
 }
 
 /// Projection optics specification for VUV lithography.
@@ -82,15 +77,22 @@ pub struct ProjectionOptics {
 
 impl ProjectionOptics {
     /// Create optics with default VUV parameters.
-    pub fn new(na: f64) -> Self {
-        Self {
+    pub fn new(na: f64) -> crate::error::Result<Self> {
+        if na.is_nan() || na <= 0.0 || na >= 1.0 {
+            return Err(crate::error::LithographyError::InvalidParameter {
+                name: "numerical_aperture",
+                value: if na.is_nan() { f64::NAN } else { na },
+                reason: "must be in range (0, 1) and not NaN",
+            });
+        }
+        Ok(Self {
             na,
             reduction: 4.0,
             zernike_coefficients: Vec::new(),
             flare_fraction: 0.02, // 2% flare typical for VUV
             axial_chromatic_nm_per_pm: 15.0,
             apodization: Apodization::default(),
-        }
+        })
     }
 
     /// Maximum spatial frequency that passes through the pupil, in 1/nm.
@@ -134,8 +136,8 @@ impl ProjectionOptics {
 
         // Defocus phase: W_defocus = defocus * rho^2 * NA^2 / (2 * lambda)
         // Expressed in radians: 2*pi/lambda * defocus * rho^2 * NA^2 / 2
-        let defocus_phase = std::f64::consts::PI * defocus_nm * rho * rho * self.na * self.na
-            / wavelength_nm;
+        let defocus_phase =
+            std::f64::consts::PI * defocus_nm * rho * rho * self.na * self.na / wavelength_nm;
 
         let total_phase = aberration_phase + defocus_phase;
 
@@ -186,7 +188,7 @@ impl OpticalSystem for ProjectionOptics {
 
 impl Default for ProjectionOptics {
     fn default() -> Self {
-        Self::new(0.75)
+        Self::new(0.75).expect("default NA 0.75 is valid")
     }
 }
 
@@ -197,14 +199,14 @@ mod tests {
 
     #[test]
     fn test_cutoff_frequency() {
-        let optics = ProjectionOptics::new(0.75);
+        let optics = ProjectionOptics::new(0.75).unwrap();
         let fc = optics.cutoff_frequency(157.0);
         assert_relative_eq!(fc, 0.75 / 157.0, epsilon = 1e-10);
     }
 
     #[test]
     fn test_rayleigh_resolution() {
-        let optics = ProjectionOptics::new(0.75);
+        let optics = ProjectionOptics::new(0.75).unwrap();
         let res = optics.rayleigh_resolution(157.0);
         // 0.61 * 157 / 0.75 = 127.7 nm
         assert_relative_eq!(res, 0.61 * 157.0 / 0.75, epsilon = 1e-10);
@@ -212,28 +214,28 @@ mod tests {
 
     #[test]
     fn test_pupil_inside() {
-        let optics = ProjectionOptics::new(0.75);
+        let optics = ProjectionOptics::new(0.75).unwrap();
         let p = optics.pupil_function(0.0, 0.0, 0.0, 157.0);
         assert_relative_eq!(p.norm(), 1.0, epsilon = 1e-10);
     }
 
     #[test]
     fn test_pupil_outside() {
-        let optics = ProjectionOptics::new(0.75);
+        let optics = ProjectionOptics::new(0.75).unwrap();
         let p = optics.pupil_function(1.5, 0.0, 0.0, 157.0);
         assert_relative_eq!(p.norm(), 0.0, epsilon = 1e-10);
     }
 
     #[test]
     fn test_pupil_at_edge() {
-        let optics = ProjectionOptics::new(0.75);
+        let optics = ProjectionOptics::new(0.75).unwrap();
         let p = optics.pupil_function(1.0, 0.0, 0.0, 157.0);
         assert_relative_eq!(p.norm(), 1.0, epsilon = 1e-10);
     }
 
     #[test]
     fn test_defocus_adds_phase() {
-        let optics = ProjectionOptics::new(0.75);
+        let optics = ProjectionOptics::new(0.75).unwrap();
         let p0 = optics.pupil_function(0.5, 0.0, 0.0, 157.0);
         let p1 = optics.pupil_function(0.5, 0.0, 100.0, 157.0);
         // Same magnitude, different phase
@@ -243,7 +245,7 @@ mod tests {
 
     #[test]
     fn test_aberrated_pupil() {
-        let mut optics = ProjectionOptics::new(0.75);
+        let mut optics = ProjectionOptics::new(0.75).unwrap();
         // Add spherical aberration (Z9)
         optics.zernike_coefficients.push((9, 0.05));
         let p = optics.pupil_function(0.5, 0.0, 0.0, 157.0);
@@ -251,5 +253,17 @@ mod tests {
         assert_relative_eq!(p.norm(), 1.0, epsilon = 1e-10);
         // But non-zero phase
         assert!(p.arg().abs() > 1e-6);
+    }
+
+    #[test]
+    fn test_invalid_na_zero() {
+        assert!(ProjectionOptics::new(0.0).is_err());
+    }
+
+    #[test]
+    fn test_invalid_na_one() {
+        assert!(ProjectionOptics::new(1.0).is_err());
+        assert!(ProjectionOptics::new(-0.5).is_err());
+        assert!(ProjectionOptics::new(f64::NAN).is_err());
     }
 }

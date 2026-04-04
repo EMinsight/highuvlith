@@ -154,7 +154,6 @@ def interactive_focus_sweep(
     """
     import ipywidgets as widgets
     import matplotlib.pyplot as plt
-    import numpy as np
     from IPython.display import display
 
     import highuvlith as huv

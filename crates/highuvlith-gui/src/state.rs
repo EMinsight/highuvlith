@@ -48,6 +48,7 @@ pub struct SimState {
     pub params: SimParams,
     pub result: Arc<Mutex<Option<SimResult>>>,
     pub computing: Arc<Mutex<bool>>,
+    pub error_message: Arc<Mutex<Option<String>>>,
     dirty: bool,
 }
 
@@ -57,6 +58,7 @@ impl SimState {
             params: SimParams::default(),
             result: Arc::new(Mutex::new(None)),
             computing: Arc::new(Mutex::new(false)),
+            error_message: Arc::new(Mutex::new(None)),
             dirty: true,
         }
     }
@@ -79,6 +81,10 @@ impl SimState {
         let params = self.params.clone();
         let result_ref = Arc::clone(&self.result);
         let computing_ref = Arc::clone(&self.computing);
+        let error_ref = Arc::clone(&self.error_message);
+
+        // Clear previous error when starting a new computation
+        *error_ref.lock().unwrap() = None;
 
         thread::spawn(move || {
             let source = VuvSource {
@@ -88,45 +94,70 @@ impl SimState {
                 spectral_shape: highuvlith_core::source::SpectralShape::Lorentzian,
                 pulse_energy_mj: 10.0,
                 rep_rate_hz: 4000.0,
-                illumination: IlluminationShape::Conventional { sigma: params.sigma },
+                illumination: IlluminationShape::Conventional {
+                    sigma: params.sigma,
+                },
             };
-            let optics = ProjectionOptics::new(params.na);
+            let optics = match ProjectionOptics::new(params.na) {
+                Ok(o) => o,
+                Err(e) => {
+                    *error_ref.lock().unwrap() = Some(format!("Optics error: {}", e));
+                    *computing_ref.lock().unwrap() = false;
+                    return;
+                }
+            };
             let grid = GridConfig {
                 size: params.grid_size,
                 pixel_nm: 2.0,
             };
-            let mask = Mask::line_space(params.cd_nm, params.pitch_nm);
+            let mask = match Mask::line_space(params.cd_nm, params.pitch_nm) {
+                Ok(m) => m,
+                Err(e) => {
+                    *error_ref.lock().unwrap() = Some(format!("Mask error: {}", e));
+                    *computing_ref.lock().unwrap() = false;
+                    return;
+                }
+            };
 
             let start = std::time::Instant::now();
-            if let Ok(engine) = AerialImageEngine::new(&source, &optics, grid, 15) {
-                let aerial = engine.compute(&mask, params.focus_nm);
-                let elapsed = start.elapsed();
+            match AerialImageEngine::new(&source, &optics, grid, 15) {
+                Ok(engine) => {
+                    let aerial = engine.compute(&mask, params.focus_nm);
+                    let elapsed = start.elapsed();
 
-                let contrast = metrics::image_contrast(&aerial.data);
-                let i_max = aerial.data.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-                let i_min = aerial.data.iter().cloned().fold(f64::INFINITY, f64::min);
+                    let contrast = metrics::image_contrast(&aerial.data);
+                    let i_max = aerial
+                        .data
+                        .iter()
+                        .cloned()
+                        .fold(f64::NEG_INFINITY, f64::max);
+                    let i_min = aerial.data.iter().cloned().fold(f64::INFINITY, f64::min);
 
-                let n = aerial.data.ncols();
-                let center_row = aerial.data.nrows() / 2;
-                let field = params.grid_size as f64 * 2.0;
-                let half = field / 2.0;
-                let pixel = field / n as f64;
-                let cross_section_x: Vec<f64> =
-                    (0..n).map(|j| -half + (j as f64 + 0.5) * pixel).collect();
-                let cross_section_i: Vec<f64> =
-                    (0..n).map(|j| aerial.data[[center_row, j]]).collect();
+                    let n = aerial.data.ncols();
+                    let center_row = aerial.data.nrows() / 2;
+                    let field = params.grid_size as f64 * 2.0;
+                    let half = field / 2.0;
+                    let pixel = field / n as f64;
+                    let cross_section_x: Vec<f64> =
+                        (0..n).map(|j| -half + (j as f64 + 0.5) * pixel).collect();
+                    let cross_section_i: Vec<f64> =
+                        (0..n).map(|j| aerial.data[[center_row, j]]).collect();
 
-                let sim_result = SimResult {
-                    intensity: aerial.data,
-                    contrast,
-                    i_max,
-                    i_min,
-                    num_kernels: engine.num_kernels(),
-                    compute_ms: elapsed.as_secs_f64() * 1000.0,
-                    cross_section_x,
-                    cross_section_i,
-                };
-                *result_ref.lock().unwrap() = Some(sim_result);
+                    let sim_result = SimResult {
+                        intensity: aerial.data,
+                        contrast,
+                        i_max,
+                        i_min,
+                        num_kernels: engine.num_kernels(),
+                        compute_ms: elapsed.as_secs_f64() * 1000.0,
+                        cross_section_x,
+                        cross_section_i,
+                    };
+                    *result_ref.lock().unwrap() = Some(sim_result);
+                }
+                Err(e) => {
+                    *error_ref.lock().unwrap() = Some(format!("Engine error: {}", e));
+                }
             }
             *computing_ref.lock().unwrap() = false;
         });

@@ -16,7 +16,6 @@ def plot_bossung(
 ):
     """Plot Bossung curves (CD vs focus at multiple doses)."""
     import matplotlib.pyplot as plt
-    import numpy as np
 
     if ax is None:
         fig, ax = plt.subplots(1, 1, figsize=(10, 6))

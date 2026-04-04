@@ -113,7 +113,7 @@ impl LithApp {
 
         ui.horizontal(|ui| {
             ui.label("Grid:");
-            let sizes = [64usize, 128, 256];
+            let sizes = [64usize, 128, 256, 512, 1024];
             for &s in &sizes {
                 if ui
                     .selectable_label(p.grid_size == s, format!("{}", s))
@@ -152,6 +152,14 @@ impl LithApp {
     }
 
     fn draw_visualization(&mut self, ui: &mut egui::Ui) {
+        // Show error message in red if engine creation failed
+        if let Some(ref err) = *self.state.error_message.lock().unwrap() {
+            ui.centered_and_justified(|ui| {
+                ui.colored_label(egui::Color32::RED, format!("Error: {}", err));
+            });
+            return;
+        }
+
         let has_result = self.state.result.lock().unwrap().is_some();
         if !has_result {
             ui.centered_and_justified(|ui| {
@@ -203,8 +211,7 @@ impl LithApp {
         let img_size = available.min_elem().min(600.0);
         ui.centered_and_justified(|ui| {
             ui.add(
-                egui::Image::from_texture(&texture)
-                    .fit_to_exact_size(egui::Vec2::splat(img_size)),
+                egui::Image::from_texture(&texture).fit_to_exact_size(egui::Vec2::splat(img_size)),
             );
         });
     }
@@ -232,7 +239,7 @@ impl LithApp {
 
 /// Simple inferno-like colormap: black -> purple -> orange -> yellow
 fn inferno_color(t: f64) -> egui::Color32 {
-    let t = t as f32;
+    let t = t.clamp(0.0, 1.0) as f32;
     let r;
     let g;
     let b;

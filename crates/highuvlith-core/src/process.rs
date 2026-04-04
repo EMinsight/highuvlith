@@ -4,6 +4,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::aerial::AerialImageEngine;
+use crate::error::LithographyError;
 use crate::mask::Mask;
 use crate::metrics;
 
@@ -40,7 +41,7 @@ impl ProcessWindow {
         cd_threshold: f64,
         cd_target_nm: f64,
         cd_tolerance_pct: f64,
-    ) -> Self {
+    ) -> crate::error::Result<Self> {
         let n_doses = doses.len();
         let n_focuses = focuses.len();
 
@@ -55,22 +56,22 @@ impl ProcessWindow {
                 focuses.iter().map(move |&focus| {
                     let aerial = engine.compute(mask, focus);
                     // Measure CD from the center cross-section
-                    metrics::measure_cd_2d(&aerial.data, -half, half, cd_threshold)
-                        .unwrap_or(0.0)
+                    metrics::measure_cd_2d(&aerial.data, -half, half, cd_threshold).unwrap_or(0.0)
                 })
             })
             .collect();
 
-        let cd_matrix =
-            Array2::from_shape_vec((n_doses, n_focuses), cd_values).unwrap();
+        let cd_matrix = Array2::from_shape_vec((n_doses, n_focuses), cd_values).map_err(|e| {
+            LithographyError::InternalError(format!("CD matrix shape error: {}", e))
+        })?;
 
-        Self {
+        Ok(Self {
             doses: doses.to_vec(),
             focuses: focuses.to_vec(),
             cd_matrix,
             cd_target_nm,
             cd_tolerance_pct,
-        }
+        })
     }
 
     /// Compute depth of focus (DOF) at the target CD.
@@ -167,7 +168,7 @@ impl ProcessWindow {
         self.focuses
             .iter()
             .enumerate()
-            .min_by(|(_, a), (_, b)| a.abs().partial_cmp(&b.abs()).unwrap())
+            .min_by(|(_, a), (_, b)| a.abs().total_cmp(&b.abs()))
             .map(|(i, _)| i)
             .unwrap_or(0)
     }
@@ -244,7 +245,11 @@ mod tests {
         };
 
         let dof = pw.depth_of_focus();
-        assert!(dof > 0.0, "DOF should be positive for this process window, got {}", dof);
+        assert!(
+            dof > 0.0,
+            "DOF should be positive for this process window, got {}",
+            dof
+        );
     }
 
     #[test]
@@ -269,6 +274,60 @@ mod tests {
         };
 
         let el = pw.exposure_latitude();
-        assert!(el > 0.0, "EL should be positive for this process window, got {}", el);
+        assert!(
+            el > 0.0,
+            "EL should be positive for this process window, got {}",
+            el
+        );
+    }
+
+    #[test]
+    fn test_batch_defocus_returns_correct_count() {
+        use crate::aerial::AerialImageEngine;
+        use crate::optics::ProjectionOptics;
+        use crate::source::VuvSource;
+        use crate::types::GridConfig;
+
+        let source = VuvSource::f2_laser(0.5).unwrap();
+        let optics = ProjectionOptics::new(0.75).unwrap();
+        let grid = GridConfig {
+            size: 64,
+            pixel_nm: 4.0,
+        };
+        let engine = AerialImageEngine::new(&source, &optics, grid, 10).unwrap();
+        let mask = Mask::line_space(65.0, 180.0).unwrap();
+
+        let focuses = vec![-200.0, -100.0, 0.0, 100.0, 200.0];
+        let results = batch_defocus(&engine, &mask, &focuses);
+        assert_eq!(results.len(), 5);
+        for (focus, image) in &results {
+            assert!(focuses.contains(focus));
+            assert_eq!(image.dim(), (64, 64));
+        }
+    }
+
+    #[test]
+    fn test_process_window_compute() {
+        use crate::aerial::AerialImageEngine;
+        use crate::optics::ProjectionOptics;
+        use crate::source::VuvSource;
+        use crate::types::GridConfig;
+
+        let source = VuvSource::f2_laser(0.5).unwrap();
+        let optics = ProjectionOptics::new(0.75).unwrap();
+        let grid = GridConfig {
+            size: 64,
+            pixel_nm: 4.0,
+        };
+        let engine = AerialImageEngine::new(&source, &optics, grid, 10).unwrap();
+        let mask = Mask::line_space(65.0, 180.0).unwrap();
+
+        let doses = vec![25.0, 30.0, 35.0];
+        let focuses = vec![-100.0, 0.0, 100.0];
+        let pw = ProcessWindow::compute(&engine, &mask, &doses, &focuses, 0.5, 65.0, 10.0).unwrap();
+
+        assert_eq!(pw.cd_matrix.dim(), (3, 3));
+        assert_eq!(pw.doses.len(), 3);
+        assert_eq!(pw.focuses.len(), 3);
     }
 }

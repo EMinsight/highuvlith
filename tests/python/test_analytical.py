@@ -49,6 +49,28 @@ class TestMonotonicity:
         assert c100 > c200, f"Contrast at focus=100 ({c100:.4f}) should exceed focus=200 ({c200:.4f})"
 
 
+class TestHigherNABetterContrast:
+    def test_higher_na_better_contrast(self):
+        """Higher NA should give higher contrast at the same conditions."""
+        source = huv.SourceConfig.f2_laser(sigma=0.7)
+        mask = huv.MaskConfig.line_space(cd_nm=65.0, pitch_nm=180.0)
+        grid = huv.GridConfig(size=128, pixel_nm=2.0)
+
+        optics_low = huv.OpticsConfig(numerical_aperture=0.5)
+        optics_high = huv.OpticsConfig(numerical_aperture=0.9)
+
+        engine_low = huv.SimulationEngine(source, optics_low, mask, grid=grid, max_kernels=10)
+        engine_high = huv.SimulationEngine(source, optics_high, mask, grid=grid, max_kernels=10)
+
+        c_low = engine_low.image_contrast(focus_nm=0.0)
+        c_high = engine_high.image_contrast(focus_nm=0.0)
+
+        assert c_high > c_low, (
+            f"Higher NA ({c_high:.4f}) should give better contrast "
+            f"than lower NA ({c_low:.4f})"
+        )
+
+
 class TestEnergyConservation:
     def test_total_intensity_preserved_with_defocus(self):
         source = huv.SourceConfig.f2_laser(sigma=0.5)

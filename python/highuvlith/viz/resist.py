@@ -16,7 +16,6 @@ def plot_resist_profile(
 ):
     """Plot developed resist profile."""
     import matplotlib.pyplot as plt
-    import numpy as np
 
     if ax is None:
         fig, ax = plt.subplots(1, 1, figsize=(10, 4))

@@ -44,10 +44,7 @@ pub fn save_png(
 }
 
 /// Save a 2D intensity array as a 32-bit floating-point TIFF.
-pub fn save_tiff_f32(
-    data: &Array2<f64>,
-    path: &Path,
-) -> Result<(), image::ImageError> {
+pub fn save_tiff_f32(data: &Array2<f64>, path: &Path) -> Result<(), image::ImageError> {
     let (ny, nx) = data.dim();
     let mut img = image::GrayImage::new(nx as u32, ny as u32);
 
@@ -107,31 +104,35 @@ fn apply_colormap(t: f64, colormap: Colormap) -> (u8, u8, u8) {
         Colormap::BlueRed => {
             if t < 0.5 {
                 let s = t / 0.5;
-                (
-                    (s * 255.0) as u8,
-                    (s * 255.0) as u8,
-                    255,
-                )
+                ((s * 255.0) as u8, (s * 255.0) as u8, 255)
             } else {
                 let s = (t - 0.5) / 0.5;
-                (
-                    255,
-                    (255.0 * (1.0 - s)) as u8,
-                    (255.0 * (1.0 - s)) as u8,
-                )
+                (255, (255.0 * (1.0 - s)) as u8, (255.0 * (1.0 - s)) as u8)
             }
         }
         Colormap::Viridis => {
             let t = t as f32;
             if t < 0.33 {
                 let s = t / 0.33;
-                ((s * 30.0) as u8, (20.0 + s * 100.0) as u8, (80.0 + s * 50.0) as u8)
+                (
+                    (s * 30.0) as u8,
+                    (20.0 + s * 100.0) as u8,
+                    (80.0 + s * 50.0) as u8,
+                )
             } else if t < 0.66 {
                 let s = (t - 0.33) / 0.33;
-                ((30.0 + s * 60.0) as u8, (120.0 + s * 60.0) as u8, (130.0 - s * 60.0) as u8)
+                (
+                    (30.0 + s * 60.0) as u8,
+                    (120.0 + s * 60.0) as u8,
+                    (130.0 - s * 60.0) as u8,
+                )
             } else {
                 let s = (t - 0.66) / 0.34;
-                ((90.0 + s * 165.0) as u8, (180.0 + s * 75.0) as u8, (70.0 - s * 40.0) as u8)
+                (
+                    (90.0 + s * 165.0) as u8,
+                    (180.0 + s * 75.0) as u8,
+                    (70.0 - s * 40.0) as u8,
+                )
             }
         }
     }
@@ -144,7 +145,12 @@ mod tests {
 
     #[test]
     fn test_colormap_range() {
-        for cmap in [Colormap::Inferno, Colormap::Grayscale, Colormap::BlueRed, Colormap::Viridis] {
+        for cmap in [
+            Colormap::Inferno,
+            Colormap::Grayscale,
+            Colormap::BlueRed,
+            Colormap::Viridis,
+        ] {
             let (r0, g0, b0) = apply_colormap(0.0, cmap);
             let (r1, g1, b1) = apply_colormap(1.0, cmap);
             // Just verify no panics at boundaries
@@ -155,9 +161,7 @@ mod tests {
 
     #[test]
     fn test_save_png() {
-        let data = Array2::from_shape_fn((64, 64), |(i, j)| {
-            (i as f64 / 64.0) * (j as f64 / 64.0)
-        });
+        let data = Array2::from_shape_fn((64, 64), |(i, j)| (i as f64 / 64.0) * (j as f64 / 64.0));
         let path = std::env::temp_dir().join("highuvlith_test_aerial.png");
         save_png(&data, &path, Colormap::Inferno).unwrap();
         assert!(path.exists());

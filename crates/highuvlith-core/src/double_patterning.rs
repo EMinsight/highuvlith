@@ -120,11 +120,11 @@ pub fn simulate_double_patterning(
 ///
 /// Given a line/space pattern at half-pitch, creates two masks each with
 /// double the pitch (every other line), that together form the original pattern.
-pub fn split_mask_lele(cd_nm: f64, pitch_nm: f64) -> (Mask, Mask) {
-    // Each mask has lines at 2× the original pitch
+pub fn split_mask_lele(cd_nm: f64, pitch_nm: f64) -> crate::error::Result<(Mask, Mask)> {
+    // Each mask has lines at 2x the original pitch
     let double_pitch = 2.0 * pitch_nm;
 
-    let mask1 = Mask::line_space(cd_nm, double_pitch);
+    let mask1 = Mask::line_space(cd_nm, double_pitch)?;
 
     // Second mask is shifted by one pitch
     let mut mask2_features = Vec::new();
@@ -152,7 +152,7 @@ pub fn split_mask_lele(cd_nm: f64, pitch_nm: f64) -> (Mask, Mask) {
         dark_field: false,
     };
 
-    (mask1, mask2)
+    Ok((mask1, mask2))
 }
 
 #[cfg(test)]
@@ -164,12 +164,15 @@ mod tests {
 
     #[test]
     fn test_double_patterning_basic() {
-        let source = VuvSource::f2_laser(0.7);
-        let optics = ProjectionOptics::new(0.75);
-        let grid = GridConfig { size: 128, pixel_nm: 2.0 };
+        let source = VuvSource::f2_laser(0.7).unwrap();
+        let optics = ProjectionOptics::new(0.75).unwrap();
+        let grid = GridConfig {
+            size: 128,
+            pixel_nm: 2.0,
+        };
         let engine = AerialImageEngine::new(&source, &optics, grid, 10).unwrap();
 
-        let (mask1, mask2) = split_mask_lele(65.0, 180.0);
+        let (mask1, mask2) = split_mask_lele(65.0, 180.0).unwrap();
         let config = DoublePatterningConfig::default();
         let result = simulate_double_patterning(&engine, &mask1, &mask2, &config);
 
@@ -179,12 +182,15 @@ mod tests {
 
     #[test]
     fn test_overlay_shifts_result() {
-        let source = VuvSource::f2_laser(0.7);
-        let optics = ProjectionOptics::new(0.75);
-        let grid = GridConfig { size: 128, pixel_nm: 2.0 };
+        let source = VuvSource::f2_laser(0.7).unwrap();
+        let optics = ProjectionOptics::new(0.75).unwrap();
+        let grid = GridConfig {
+            size: 128,
+            pixel_nm: 2.0,
+        };
         let engine = AerialImageEngine::new(&source, &optics, grid, 10).unwrap();
 
-        let (mask1, mask2) = split_mask_lele(65.0, 180.0);
+        let (mask1, mask2) = split_mask_lele(65.0, 180.0).unwrap();
 
         let config_zero = DoublePatterningConfig::default();
         let config_shifted = DoublePatterningConfig {
@@ -204,12 +210,15 @@ mod tests {
             .map(|(a, b)| (a - b).abs())
             .sum();
 
-        assert!(diff > 0.01, "Overlay shift should change the combined image");
+        assert!(
+            diff > 0.01,
+            "Overlay shift should change the combined image"
+        );
     }
 
     #[test]
     fn test_split_mask_creates_pair() {
-        let (mask1, mask2) = split_mask_lele(65.0, 180.0);
+        let (mask1, mask2) = split_mask_lele(65.0, 180.0).unwrap();
         assert!(!mask1.features.is_empty());
         assert!(!mask2.features.is_empty());
     }

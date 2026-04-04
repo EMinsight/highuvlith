@@ -1,6 +1,6 @@
 use ndarray::Array2;
 use num::Complex;
-use rustfft::{FftPlanner, FftDirection};
+use rustfft::{FftDirection, FftPlanner};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -28,12 +28,12 @@ impl Fft2D {
             FftDirection::Inverse => &self.inverse_plans,
         };
 
-        let mut cache_lock = cache.lock().unwrap();
+        let mut cache_lock = cache.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(plan) = cache_lock.get(&n) {
             return Arc::clone(plan);
         }
 
-        let mut planner = self.planner.lock().unwrap();
+        let mut planner = self.planner.lock().unwrap_or_else(|e| e.into_inner());
         let plan = match direction {
             FftDirection::Forward => planner.plan_fft_forward(n),
             FftDirection::Inverse => planner.plan_fft_inverse(n),
@@ -122,8 +122,8 @@ impl Fft2D {
     /// Inverse FFT shift: undo fftshift.
     pub fn ifftshift(data: &Array2<Complex64>) -> Array2<Complex64> {
         let (ny, nx) = data.dim();
-        let hx = (nx + 1) / 2;
-        let hy = (ny + 1) / 2;
+        let hx = nx.div_ceil(2);
+        let hy = ny.div_ceil(2);
         let mut shifted = Array2::zeros((ny, nx));
         for i in 0..ny {
             for j in 0..nx {
@@ -192,5 +192,76 @@ mod tests {
             energy_freq / (n * n) as f64,
             epsilon = 1e-10
         );
+    }
+
+    #[test]
+    fn test_fftshift_ifftshift_roundtrip() {
+        let n = 64;
+        let mut data = Array2::zeros((n, n));
+        data[[0, 0]] = Complex64::new(1.0, 0.0);
+        data[[10, 20]] = Complex64::new(3.0, -1.0);
+        data[[50, 30]] = Complex64::new(-2.0, 0.5);
+
+        let shifted = Fft2D::fftshift(&data);
+        let restored = Fft2D::ifftshift(&shifted);
+
+        for i in 0..n {
+            for j in 0..n {
+                assert_relative_eq!(restored[[i, j]].re, data[[i, j]].re, epsilon = 1e-15);
+                assert_relative_eq!(restored[[i, j]].im, data[[i, j]].im, epsilon = 1e-15);
+            }
+        }
+    }
+
+    #[test]
+    fn test_forward_real_matches_forward() {
+        let fft = Fft2D::new();
+        let n = 64;
+        let real_data = Array2::from_shape_fn((n, n), |(i, j)| ((i + j) as f64 * 0.1).sin());
+
+        let result_real = fft.forward_real(&real_data);
+
+        let mut complex_data = real_data.mapv(|v| Complex64::new(v, 0.0));
+        fft.forward(&mut complex_data);
+
+        for i in 0..n {
+            for j in 0..n {
+                assert_relative_eq!(
+                    result_real[[i, j]].re,
+                    complex_data[[i, j]].re,
+                    epsilon = 1e-10
+                );
+                assert_relative_eq!(
+                    result_real[[i, j]].im,
+                    complex_data[[i, j]].im,
+                    epsilon = 1e-10
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_dc_component() {
+        let fft = Fft2D::new();
+        let n = 64;
+        let constant_val = 3.5;
+        let real_data = Array2::from_elem((n, n), constant_val);
+
+        let result = fft.forward_real(&real_data);
+
+        // DC component at [0,0] should be N*N * constant_val
+        let dc = result[[0, 0]];
+        assert_relative_eq!(dc.re, (n * n) as f64 * constant_val, epsilon = 1e-8);
+        assert_relative_eq!(dc.im, 0.0, epsilon = 1e-8);
+
+        // All other components should be zero
+        for i in 0..n {
+            for j in 0..n {
+                if i == 0 && j == 0 {
+                    continue;
+                }
+                assert_relative_eq!(result[[i, j]].norm(), 0.0, epsilon = 1e-8);
+            }
+        }
     }
 }

@@ -34,10 +34,7 @@ pub enum IlluminationShape {
     /// Conventional circular partial coherence.
     Conventional { sigma: f64 },
     /// Annular illumination.
-    Annular {
-        sigma_inner: f64,
-        sigma_outer: f64,
-    },
+    Annular { sigma_inner: f64, sigma_outer: f64 },
     /// Quadrupole illumination.
     Quadrupole {
         sigma_center: f64,
@@ -53,9 +50,10 @@ pub enum IlluminationShape {
 }
 
 /// Spectral line shape of the VUV laser.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub enum SpectralShape {
     /// Lorentzian (typical for excimer lasers).
+    #[default]
     Lorentzian,
     /// Gaussian.
     Gaussian,
@@ -64,12 +62,6 @@ pub enum SpectralShape {
         wavelengths_nm: Vec<f64>,
         intensities: Vec<f64>,
     },
-}
-
-impl Default for SpectralShape {
-    fn default() -> Self {
-        Self::Lorentzian
-    }
 }
 
 /// VUV laser source specification.
@@ -92,9 +84,22 @@ pub struct VuvSource {
 }
 
 impl VuvSource {
+    /// Validate sigma for conventional illumination.
+    fn validate_sigma(sigma: f64) -> crate::error::Result<()> {
+        if sigma.is_nan() || sigma <= 0.0 || sigma > 1.0 {
+            return Err(crate::error::LithographyError::InvalidParameter {
+                name: "sigma",
+                value: if sigma.is_nan() { f64::NAN } else { sigma },
+                reason: "must be in range (0, 1]",
+            });
+        }
+        Ok(())
+    }
+
     /// Create an F2 excimer laser source with default parameters.
-    pub fn f2_laser(sigma: f64) -> Self {
-        Self {
+    pub fn f2_laser(sigma: f64) -> crate::error::Result<Self> {
+        Self::validate_sigma(sigma)?;
+        Ok(Self {
             wavelength_nm: 157.63,
             bandwidth_pm: 1.1,
             spectral_samples: 5,
@@ -102,12 +107,13 @@ impl VuvSource {
             pulse_energy_mj: 10.0,
             rep_rate_hz: 4000.0,
             illumination: IlluminationShape::Conventional { sigma },
-        }
+        })
     }
 
     /// Create an Ar2 excimer laser source.
-    pub fn ar2_laser(sigma: f64) -> Self {
-        Self {
+    pub fn ar2_laser(sigma: f64) -> crate::error::Result<Self> {
+        Self::validate_sigma(sigma)?;
+        Ok(Self {
             wavelength_nm: 126.0,
             bandwidth_pm: 5.0,
             spectral_samples: 7,
@@ -115,7 +121,7 @@ impl VuvSource {
             pulse_energy_mj: 5.0,
             rep_rate_hz: 1000.0,
             illumination: IlluminationShape::Conventional { sigma },
-        }
+        })
     }
 
     /// Evaluate the source intensity at a given pupil coordinate (fx, fy),
@@ -271,7 +277,7 @@ fn interpolate_linear(xs: &[f64], ys: &[f64], x: f64) -> f64 {
 
 impl Default for VuvSource {
     fn default() -> Self {
-        Self::f2_laser(0.7)
+        Self::f2_laser(0.7).expect("default sigma 0.7 is valid")
     }
 }
 
@@ -282,20 +288,20 @@ mod tests {
 
     #[test]
     fn test_conventional_source_inside() {
-        let src = VuvSource::f2_laser(0.5);
+        let src = VuvSource::f2_laser(0.5).unwrap();
         assert_relative_eq!(src.intensity_at(0.0, 0.0), 1.0);
         assert_relative_eq!(src.intensity_at(0.3, 0.3), 1.0);
     }
 
     #[test]
     fn test_conventional_source_outside() {
-        let src = VuvSource::f2_laser(0.5);
+        let src = VuvSource::f2_laser(0.5).unwrap();
         assert_relative_eq!(src.intensity_at(0.6, 0.0), 0.0);
     }
 
     #[test]
     fn test_spectral_weights_sum_to_one() {
-        let src = VuvSource::f2_laser(0.7);
+        let src = VuvSource::f2_laser(0.7).unwrap();
         let weights = src.spectral_weights();
         let sum: f64 = weights.iter().map(|(_, w)| w).sum();
         assert_relative_eq!(sum, 1.0, epsilon = 1e-12);
@@ -303,7 +309,7 @@ mod tests {
 
     #[test]
     fn test_spectral_weights_centered() {
-        let src = VuvSource::f2_laser(0.7);
+        let src = VuvSource::f2_laser(0.7).unwrap();
         let weights = src.spectral_weights();
         // Center weight should be the largest
         let center_idx = weights.len() / 2;
@@ -313,5 +319,37 @@ mod tests {
                 assert!(center_w >= *w);
             }
         }
+    }
+
+    #[test]
+    fn test_f2_laser_wavelength() {
+        let src = VuvSource::f2_laser(0.5).unwrap();
+        assert_relative_eq!(src.wavelength_nm, 157.63, epsilon = 0.01);
+    }
+
+    #[test]
+    fn test_ar2_laser_wavelength() {
+        let src = VuvSource::ar2_laser(0.5).unwrap();
+        assert_relative_eq!(src.wavelength_nm, 126.0, epsilon = 0.1);
+    }
+
+    #[test]
+    fn test_photon_energy_ev() {
+        let src = VuvSource::f2_laser(0.5).unwrap();
+        let energy = src.photon_energy_ev();
+        // hc/lambda = 1239.84193 / 157.63 ~ 7.866 eV
+        assert_relative_eq!(energy, 1239.84193 / 157.63, epsilon = 0.01);
+        assert!(
+            energy > 7.8 && energy < 8.0,
+            "F2 photon energy should be ~7.9 eV, got {}",
+            energy
+        );
+    }
+
+    #[test]
+    fn test_invalid_sigma_rejected() {
+        assert!(VuvSource::f2_laser(0.0).is_err());
+        assert!(VuvSource::f2_laser(-1.0).is_err());
+        assert!(VuvSource::f2_laser(f64::NAN).is_err());
     }
 }

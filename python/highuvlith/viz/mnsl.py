@@ -4,11 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-import numpy as np
 
 try:
     import matplotlib.pyplot as plt
-    from matplotlib.colors import LinearSegmentedColormap
     HAS_MATPLOTLIB = True
 except ImportError:
     HAS_MATPLOTLIB = False

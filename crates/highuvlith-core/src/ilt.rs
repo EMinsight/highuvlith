@@ -3,10 +3,10 @@
 //! Gradient-based optimization of mask transmittance to produce a target
 //! aerial image. Uses the adjoint method for efficient gradient computation.
 
-use ndarray::Array2;
 use crate::aerial::AerialImageEngine;
 use crate::mask::{Mask, MaskFeature, MaskType};
 use crate::types::GridConfig;
+use ndarray::Array2;
 
 /// ILT optimization configuration.
 #[derive(Debug, Clone)]
@@ -56,11 +56,7 @@ pub struct ILTResult {
 }
 
 /// Create a target aerial image for a line/space pattern.
-pub fn create_target_line_space(
-    cd_nm: f64,
-    pitch_nm: f64,
-    grid: &GridConfig,
-) -> Array2<f64> {
+pub fn create_target_line_space(cd_nm: f64, pitch_nm: f64, grid: &GridConfig) -> Array2<f64> {
     let n = grid.size;
     let field = grid.field_size_nm();
     let half = field / 2.0;
@@ -88,10 +84,7 @@ pub fn create_target_line_space(
 ///
 /// The gradient ∂cost/∂m is computed via the adjoint:
 ///   ∂cost/∂m = 2 · Re[Σ_k λ_k · FFT(H_k* · IFFT(H_k · FFT(m) · (I - I_target)))]
-pub fn optimize_ilt(
-    engine: &AerialImageEngine,
-    config: &ILTConfig,
-) -> ILTResult {
+pub fn optimize_ilt(engine: &AerialImageEngine, config: &ILTConfig) -> ILTResult {
     let grid = engine.grid();
     let n = grid.size;
 
@@ -261,7 +254,10 @@ mod tests {
 
     #[test]
     fn test_create_target() {
-        let grid = GridConfig { size: 64, pixel_nm: 2.0 };
+        let grid = GridConfig {
+            size: 64,
+            pixel_nm: 2.0,
+        };
         let target = create_target_line_space(65.0, 180.0, &grid);
         assert_eq!(target.dim(), (64, 64));
         // Should have both 0 and 1 values
@@ -274,17 +270,19 @@ mod tests {
         let uniform = Array2::from_elem((8, 8), 0.5);
         assert_eq!(total_variation(&uniform), 0.0);
 
-        let checker = Array2::from_shape_fn((8, 8), |(i, j)| {
-            if (i + j) % 2 == 0 { 1.0 } else { 0.0 }
-        });
+        let checker =
+            Array2::from_shape_fn((8, 8), |(i, j)| if (i + j) % 2 == 0 { 1.0 } else { 0.0 });
         assert!(total_variation(&checker) > 0.0);
     }
 
     #[test]
     fn test_ilt_runs() {
-        let source = VuvSource::f2_laser(0.7);
-        let optics = ProjectionOptics::new(0.75);
-        let grid = GridConfig { size: 64, pixel_nm: 2.0 };
+        let source = VuvSource::f2_laser(0.7).unwrap();
+        let optics = ProjectionOptics::new(0.75).unwrap();
+        let grid = GridConfig {
+            size: 64,
+            pixel_nm: 2.0,
+        };
         let engine = AerialImageEngine::new(&source, &optics, grid.clone(), 10).unwrap();
 
         let target = create_target_line_space(65.0, 180.0, &grid);
@@ -303,9 +301,12 @@ mod tests {
 
     #[test]
     fn test_ilt_cost_decreases() {
-        let source = VuvSource::f2_laser(0.7);
-        let optics = ProjectionOptics::new(0.75);
-        let grid = GridConfig { size: 64, pixel_nm: 2.0 };
+        let source = VuvSource::f2_laser(0.7).unwrap();
+        let optics = ProjectionOptics::new(0.75).unwrap();
+        let grid = GridConfig {
+            size: 64,
+            pixel_nm: 2.0,
+        };
         let engine = AerialImageEngine::new(&source, &optics, grid.clone(), 10).unwrap();
 
         let target = create_target_line_space(65.0, 180.0, &grid);
@@ -322,8 +323,12 @@ mod tests {
             let early = result.cost_history[0];
             let late = result.cost_history[result.cost_history.len() - 1];
             // Allow some tolerance — cost should be at least a bit lower
-            assert!(late <= early + 0.01,
-                "Cost should decrease: early={:.4}, late={:.4}", early, late);
+            assert!(
+                late <= early + 0.01,
+                "Cost should decrease: early={:.4}, late={:.4}",
+                early,
+                late
+            );
         }
     }
 }

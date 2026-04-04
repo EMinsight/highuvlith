@@ -9,7 +9,6 @@ from typing import Any
 
 def save_config(config: dict[str, Any], path: str | Path) -> None:
     """Save a configuration dictionary to a TOML file."""
-    import tomllib
 
     path = Path(path)
 
@@ -37,5 +36,7 @@ def save_config(config: dict[str, Any], path: str | Path) -> None:
 def load_config(path: str | Path) -> dict[str, Any]:
     """Load a configuration dictionary from a TOML file."""
     path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"Configuration file not found: {path}")
     with open(path, "rb") as f:
         return tomllib.load(f)

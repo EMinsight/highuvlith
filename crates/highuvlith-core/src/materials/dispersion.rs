@@ -10,20 +10,34 @@ pub struct SellmeierCoefficients {
 
 impl SellmeierCoefficients {
     /// Evaluate refractive index at a given wavelength (in nm).
-    pub fn refractive_index(&self, wavelength_nm: f64) -> f64 {
+    pub fn refractive_index(&self, wavelength_nm: f64) -> crate::error::Result<f64> {
         let lambda_um = wavelength_nm * 1e-3;
         let lambda_sq = lambda_um * lambda_um;
 
         let mut n_sq = 1.0;
         for (bi, ci) in self.b.iter().zip(self.c.iter()) {
-            n_sq += bi * lambda_sq / (lambda_sq - ci);
+            let denom = lambda_sq - ci;
+            if denom.abs() < 1e-20 {
+                return Err(crate::error::LithographyError::NumericalError(format!(
+                    "Sellmeier resonance at wavelength {:.4} nm (lambda^2 ~ C_i = {:.6})",
+                    wavelength_nm, ci
+                )));
+            }
+            n_sq += bi * lambda_sq / denom;
         }
 
-        n_sq.sqrt()
+        if n_sq < 0.0 {
+            return Err(crate::error::LithographyError::NumericalError(format!(
+                "Sellmeier gives unphysical n^2 = {:.6} at wavelength {:.4} nm",
+                n_sq, wavelength_nm
+            )));
+        }
+
+        Ok(n_sq.sqrt())
     }
 
     /// Evaluate dn/dlambda at a given wavelength (in nm). Returns dn/dlambda in 1/nm.
-    pub fn dispersion(&self, wavelength_nm: f64) -> f64 {
+    pub fn dispersion(&self, wavelength_nm: f64) -> crate::error::Result<f64> {
         let lambda_um = wavelength_nm * 1e-3;
         let lambda_sq = lambda_um * lambda_um;
 
@@ -31,16 +45,29 @@ impl SellmeierCoefficients {
         let mut dn_sq_dlambda = 0.0;
         for (bi, ci) in self.b.iter().zip(self.c.iter()) {
             let denom = lambda_sq - ci;
+            if denom.abs() < 1e-20 {
+                return Err(crate::error::LithographyError::NumericalError(format!(
+                    "Sellmeier resonance at wavelength {:.4} nm (lambda^2 ~ C_i = {:.6})",
+                    wavelength_nm, ci
+                )));
+            }
             n_sq += bi * lambda_sq / denom;
             // d(n^2)/d(lambda) = B_i * (-2 * lambda * C_i) / (lambda^2 - C_i)^2
             dn_sq_dlambda += bi * (-2.0 * lambda_um * ci) / (denom * denom);
+        }
+
+        if n_sq < 0.0 {
+            return Err(crate::error::LithographyError::NumericalError(format!(
+                "Sellmeier gives unphysical n^2 = {:.6} at wavelength {:.4} nm",
+                n_sq, wavelength_nm
+            )));
         }
 
         let n = n_sq.sqrt();
         // dn/dlambda_um = (1/(2n)) * dn^2/dlambda_um
         let dn_dlambda_um = dn_sq_dlambda / (2.0 * n);
         // Convert to per nm
-        dn_dlambda_um * 1e-3
+        Ok(dn_dlambda_um * 1e-3)
     }
 }
 
@@ -96,7 +123,7 @@ mod tests {
     #[test]
     fn test_caf2_at_157nm() {
         let sellmeier = caf2_sellmeier();
-        let n = sellmeier.refractive_index(157.0);
+        let n = sellmeier.refractive_index(157.0).unwrap();
         // CaF2 at 157nm: n ~ 1.559
         assert_relative_eq!(n, 1.559, epsilon = 0.02);
     }
@@ -104,8 +131,8 @@ mod tests {
     #[test]
     fn test_caf2_at_visible() {
         let sellmeier = caf2_sellmeier();
-        let n = sellmeier.refractive_index(589.0); // sodium D line
-        // CaF2 at 589nm: n ~ 1.434
+        let n = sellmeier.refractive_index(589.0).unwrap(); // sodium D line
+                                                            // CaF2 at 589nm: n ~ 1.434
         assert_relative_eq!(n, 1.434, epsilon = 0.005);
     }
 
@@ -113,16 +140,42 @@ mod tests {
     fn test_dispersion_negative() {
         let sellmeier = caf2_sellmeier();
         // Normal dispersion: dn/dlambda < 0
-        let disp = sellmeier.dispersion(157.0);
+        let disp = sellmeier.dispersion(157.0).unwrap();
         assert!(disp < 0.0, "CaF2 should have normal dispersion at 157nm");
     }
 
     #[test]
     fn test_caf2_dispersion_steeper_at_vuv() {
         let sellmeier = caf2_sellmeier();
-        let disp_157 = sellmeier.dispersion(157.0).abs();
-        let disp_589 = sellmeier.dispersion(589.0).abs();
+        let disp_157 = sellmeier.dispersion(157.0).unwrap().abs();
+        let disp_589 = sellmeier.dispersion(589.0).unwrap().abs();
         // Dispersion is much steeper at VUV than visible
         assert!(disp_157 > disp_589 * 5.0);
+    }
+
+    #[test]
+    fn test_mgf2_reasonable_index() {
+        let sellmeier = mgf2_ordinary_sellmeier();
+        let n = sellmeier.refractive_index(157.0).unwrap();
+        // MgF2 at 157nm should have n > 1.3 (typical ~1.44 for ordinary ray)
+        assert!(n > 1.3, "MgF2 at 157nm should have n > 1.3, got {}", n);
+        assert!(n < 2.0, "MgF2 at 157nm should have n < 2.0, got {}", n);
+    }
+
+    #[test]
+    fn test_sellmeier_resonance_error() {
+        // Create a Sellmeier model with a resonance at a known wavelength.
+        // Set C_i to the exact float value of (0.1)^2 so lambda_sq - C_i == 0.
+        let lambda_um: f64 = 100.0 * 1e-3; // 0.1 um
+        let c_resonance = lambda_um * lambda_um; // exact f64 value
+        let sellmeier = SellmeierCoefficients {
+            b: vec![1.0],
+            c: vec![c_resonance],
+        };
+        let result = sellmeier.refractive_index(100.0);
+        assert!(
+            result.is_err(),
+            "Should return NumericalError at resonance wavelength"
+        );
     }
 }

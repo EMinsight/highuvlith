@@ -58,3 +58,30 @@ class TestResistProfile:
         profile = engine.compute_resist_profile(dose_mj_cm2=30.0)
         h = np.asarray(profile.height_nm)
         assert h.max() <= profile.thickness_nm + 1e-10
+
+
+class TestEdgeCases:
+    def test_small_cd_near_resolution_limit(self):
+        """CD=30nm at 157nm/NA=0.75 is near resolution limit; should still compute."""
+        source = huv.SourceConfig.f2_laser(sigma=0.7)
+        optics = huv.OpticsConfig(numerical_aperture=0.75)
+        mask = huv.MaskConfig.line_space(cd_nm=30.0, pitch_nm=80.0)
+        grid = huv.GridConfig(size=128, pixel_nm=2.0)
+        engine = huv.SimulationEngine(source, optics, mask, grid=grid, max_kernels=10)
+        result = engine.compute_aerial_image(focus_nm=0.0)
+        intensity = np.asarray(result.intensity)
+        assert intensity.shape == (128, 128)
+        assert intensity.min() >= -1e-10
+
+    def test_grid_size_64_works(self):
+        """Smallest practical grid produces valid results."""
+        source = huv.SourceConfig.f2_laser(sigma=0.7)
+        optics = huv.OpticsConfig(numerical_aperture=0.75)
+        mask = huv.MaskConfig.line_space(cd_nm=65.0, pitch_nm=180.0)
+        grid = huv.GridConfig(size=64, pixel_nm=4.0)
+        engine = huv.SimulationEngine(source, optics, mask, grid=grid, max_kernels=10)
+        result = engine.compute_aerial_image(focus_nm=0.0)
+        intensity = np.asarray(result.intensity)
+        assert intensity.shape == (64, 64)
+        contrast = result.image_contrast()
+        assert contrast > 0

@@ -78,11 +78,7 @@ impl FilmStack {
 
     /// Compute the standing wave intensity pattern inside a film.
     /// Returns intensity values at the given z-positions (measured from top of stack, positive downward).
-    pub fn standing_wave(
-        &self,
-        wavelength_nm: f64,
-        z_points: &[f64],
-    ) -> Vec<f64> {
+    pub fn standing_wave(&self, wavelength_nm: f64, z_points: &[f64]) -> Vec<f64> {
         let k0 = 2.0 * std::f64::consts::PI / wavelength_nm;
 
         z_points
@@ -110,11 +106,13 @@ impl FilmStack {
         let n0_sin = self.superstrate * Complex64::new(angle_rad.sin(), 0.0);
 
         // Build transfer matrix M = product of layer matrices
-        let mut m = [[Complex64::new(1.0, 0.0), Complex64::new(0.0, 0.0)],
-                     [Complex64::new(0.0, 0.0), Complex64::new(1.0, 0.0)]];
+        let mut m = [
+            [Complex64::new(1.0, 0.0), Complex64::new(0.0, 0.0)],
+            [Complex64::new(0.0, 0.0), Complex64::new(1.0, 0.0)],
+        ];
 
         for layer in &self.layers {
-            let cos_j = ((Complex64::new(1.0, 0.0) - (n0_sin / layer.n).powi(2))).sqrt();
+            let cos_j = (Complex64::new(1.0, 0.0) - (n0_sin / layer.n).powi(2)).sqrt();
             let phase = k0 * layer.n * cos_j * layer.thickness_nm;
 
             let eta_j = match pol {
@@ -136,7 +134,7 @@ impl FilmStack {
         }
 
         // Substrate admittance
-        let cos_s = ((Complex64::new(1.0, 0.0) - (n0_sin / self.substrate).powi(2))).sqrt();
+        let cos_s = (Complex64::new(1.0, 0.0) - (n0_sin / self.substrate).powi(2)).sqrt();
         let eta_s = match pol {
             Polarization::TE | Polarization::Unpolarized => self.substrate * cos_s,
             Polarization::TM => self.substrate / cos_s,
@@ -162,12 +160,7 @@ impl FilmStack {
     }
 
     /// Compute forward and backward propagating field amplitudes at a given depth.
-    fn field_at_depth(
-        &self,
-        wavelength_nm: f64,
-        z: f64,
-        k0: f64,
-    ) -> (Complex64, Complex64) {
+    fn field_at_depth(&self, wavelength_nm: f64, z: f64, k0: f64) -> (Complex64, Complex64) {
         // Find which layer contains this z-position
         let mut depth = 0.0;
         let mut layer_idx = None;
@@ -200,10 +193,7 @@ impl FilmStack {
     }
 }
 
-fn mat2_mul(
-    a: &[[Complex64; 2]; 2],
-    b: &[[Complex64; 2]; 2],
-) -> [[Complex64; 2]; 2] {
+fn mat2_mul(a: &[[Complex64; 2]; 2], b: &[[Complex64; 2]; 2]) -> [[Complex64; 2]; 2] {
     [
         [
             a[0][0] * b[0][0] + a[0][1] * b[1][0],
@@ -280,7 +270,11 @@ mod tests {
         );
         let r = stack.reflectance(wavelength, Polarization::TE);
         // Should be near zero for ideal AR
-        assert!(r < 0.001, "Quarter-wave AR reflectance should be near zero, got {}", r);
+        assert!(
+            r < 0.001,
+            "Quarter-wave AR reflectance should be near zero, got {}",
+            r
+        );
     }
 
     #[test]
@@ -329,6 +323,10 @@ mod tests {
         let stack = FilmStack::new_vuv(vec![], Complex64::new(n_sub, 0.0));
         let brewster = (n_sub / 1.0).atan(); // atan(n2/n1)
         let r_tm = stack.reflectance_at_angle(157.0, brewster, Polarization::TM);
-        assert!(r_tm < 0.001, "TM reflectance at Brewster's angle should be near zero, got {}", r_tm);
+        assert!(
+            r_tm < 0.001,
+            "TM reflectance at Brewster's angle should be near zero, got {}",
+            r_tm
+        );
     }
 }

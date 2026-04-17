@@ -1,57 +1,89 @@
 # ============================================================
-# Rust
+# Rust / Cargo
 # ============================================================
 
-# Cargo build output (debug, release, bench, all targets)
+# Workspace build output (all profiles, all targets)
 /target/
+# Additional target dirs from cross-compilation or `cargo --target-dir`
+/target-*/
+**/target/
+
+# Criterion benchmark output (covered by /target/ but explicit for clarity)
+/target/criterion/
 
 # Intermediate compiler artifacts
 *.rlib
 *.rmeta
+# Windows debug symbols
+*.pdb
 
-# Rust temporary files
+# Internal compiler error dumps
 rustc-ice-*.txt
 
-# Cargo-generated lockfiles in libraries (keep in binaries)
-# Cargo.lock  # Already committed, so commenting this pattern
+# rustfmt backup files
+*.rs.bk
+
+# Cargo-fuzz corpora
+/fuzz/artifacts/
+/fuzz/corpus/
+
+# Coverage (llvm-cov / grcov)
+*.profraw
+*.profdata
+*.gcda
+*.gcno
+
+# Cargo.lock is intentionally committed for this workspace (binaries publish
+# with it). Do not add it here.
 
 # ============================================================
 # Python
 # ============================================================
 
-# Virtual environments (any naming convention)
+# Virtual environments (any common naming convention)
 /.venv/
 /venv/
 /.env/
 /env/
 /site-packages/
 .python-version
+.Python
 
 # Bytecode & caches
 __pycache__/
 *.py[cod]
 *$py.class
-*.pyc
-*.pyo
 
-# Packaging artifacts
-*.egg-info/
+# Packaging / build artifacts
 *.egg
-/dist/
+*.egg-info/
+.eggs/
 /build/
+/dist/
+/sdist/
 /wheels/
 *.whl
-/sdist/
+pip-log.txt
+pip-delete-this-directory.txt
+pip-wheel-metadata/
+MANIFEST
+.installed.cfg
 
-# Jupyter Notebook
+# PDM / Poetry / Hatch lockfile-adjacent caches (Cargo.lock is committed;
+# Python lockfiles are tool-specific and not used in this repo yet)
+__pypackages__/
+.pdm-python
+.pdm-build/
+.hatch/
+
+# Jupyter
 .ipynb_checkpoints/
 */.ipynb_checkpoints/*
-
-# IPython
 profile_default/
 ipython_config.py
+.jupyter/
 
-# Data & scientific computing temporary files
+# Scientific / numerical scratch data
 *.npy
 *.npz
 *.h5
@@ -61,17 +93,61 @@ ipython_config.py
 *.joblib
 
 # ============================================================
-# Compiled extensions (maturin develop / pip install -e)
+# PyO3 / maturin native extension
 # ============================================================
 
+# Compiled extension modules produced by `maturin develop`
 *.so
 *.dylib
 *.dll
 *.pyd
 *.dSYM/
 
+# Maturin build cache (extra — main target dir already covered above)
+.maturin-cache/
+
 # ============================================================
-# Generated / large binary outputs
+# Testing, linting, type-checking, coverage
+# ============================================================
+
+.pytest_cache/
+.mypy_cache/
+.pyre/
+.pytype/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# ============================================================
+# Profiling
+# ============================================================
+
+# Flamegraph / perf
+flamegraph.svg
+perf.data
+perf.data.old
+
+# Valgrind
+callgrind.out.*
+cachegrind.out.*
+massif.out.*
+
+# dhat (heap profiler)
+dhat-*.json
+
+# samply, pprof, generic profiling dumps
+samply.json*
+*.prof
+
+# Heaptrack
+*.heaptrack
+
+# ============================================================
+# Generated assets (CLI image output, demo videos)
 # ============================================================
 
 # Demo videos produced by examples/generate_demo.py
@@ -81,81 +157,123 @@ examples/*.avi
 examples/*.mkv
 examples/*.gif
 
-# Exported simulation images
+# OpenEXR exports (the CLI can also emit PNG/TIFF; those paths are user-chosen
+# so we do not blanket-ignore those extensions — add project outputs explicitly
+# below if a known output dir is introduced)
 *.exr
 
 # ============================================================
-# Testing, linting, coverage
+# Frontend / WebAssembly
 # ============================================================
 
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage
-.coverage.*
-htmlcov/
-.tox/
-.nox/
-coverage.xml
-*.gcda
-*.gcno
-*.profraw
-*.profdata
-
-# Cargo fuzz corpus and artifacts
-/fuzz/artifacts/
-/fuzz/corpus/
-
-# Criterion benchmark output
-/target/criterion/
-
-# ============================================================
-# IDE & editor files
-# ============================================================
-
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-*.iml
-*.sublime-workspace
-*.sublime-project
-.project
-.classpath
-.settings/
-tags
-TAGS
-
-# ============================================================
-# OS metadata
-# ============================================================
-
-.DS_Store
-._*
-Thumbs.db
-Desktop.ini
-
-# ============================================================
-# Tool-specific local config
-# ============================================================
-
-# Claude Code local settings
-.claude/
-
-# Trunk (WASM bundler) output
+# Trunk bundler output
 /crates/highuvlith-gui/dist/
 /web/dist/
 /web/pkg/
-
 # wasm-pack output
 /pkg/
-
-# Node.js (if web frontend is added)
+# Node.js (only relevant if a web frontend is added later)
 node_modules/
 package-lock.json
 yarn.lock
 pnpm-lock.yaml
+
+# ============================================================
+# Documentation output
+# ============================================================
+
+# Sphinx
+/docs/_build/
+/docs/.buildinfo
+/docs/.doctrees/
+# MkDocs
+/site/
+# mdBook
+/book/
+
+# ============================================================
+# Editor & IDE metadata
+# ============================================================
+
+# JetBrains
+.idea/
+*.iml
+# VS Code (per-repo settings are not committed here; flip this if the team
+# wants shared launch.json / tasks.json)
+.vscode/
+# Zed
+.zed/
+# JetBrains Fleet
+.fleet/
+# Helix
+.helix/
+# Nova / Sublime
+.nova/
+*.sublime-workspace
+*.sublime-project
+# Eclipse / Netbeans / old Java tooling (in case someone imports the repo)
+.project
+.classpath
+.settings/
+nbproject/
+# (Neo)vim
+*.swp
+*.swo
+*.swn
+*~
+Session.vim
+.netrwhist
+# ctags / etags
+tags
+TAGS
+# Clangd / clang-tools
+compile_commands.json
+.clangd/
+.cache/clangd/
+
+# ============================================================
+# AI coding assistants (local state, not shared)
+# ============================================================
+
+# Claude Code
+.claude/
+CLAUDE.local.md
+# Cursor
+.cursor/
+# aider
+.aider*
+# Continue.dev
+.continue/
+# Codeium
+.codeium/
+# Windsurf
+.windsurf/
+# GitHub Copilot per-repo overrides (keep team-wide copilot config if added)
+.github/copilot/
+
+# ============================================================
+# Operating system metadata
+# ============================================================
+
+# macOS
+.DS_Store
+._*
+.AppleDouble
+.LSOverride
+.Spotlight-V100
+.Trashes
+.fseventsd
+.VolumeIcon.icns
+.TemporaryItems
+.AppleDB
+# Windows
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+ehthumbs.db
+# Linux / KDE
+.directory
+.Trash-*
 
 # ============================================================
 # Secrets & credentials (never commit)
@@ -169,57 +287,47 @@ pnpm-lock.yaml
 *.crt
 *.cert
 *.p12
+*.pfx
 credentials.json
 secrets.toml
-config.json
 auth.json
+# Blanket config.json — intentionally aggressive; rename a real, committed
+# config to something non-ambiguous (e.g. app.config.json) rather than
+# loosening this rule.
+config.json
 
 # ============================================================
-# Documentation & temporary files
+# Version control scratch
 # ============================================================
 
-# Generated docs
-/docs/_build/
-/docs/.buildinfo
-/docs/.doctrees/
-
-# Backup and temporary files
+# Backup / merge / patch leftovers
 *.bak
 *.backup
 *.tmp
 *.temp
-*~
 *.orig
 *.rej
+*.local
 
+# Patches & diffs
+*.patch
+*.diff
+
+# Git-rewrite staging area (produced by `git filter-repo` etc.)
+.git-rewrite/
+
+# Legacy VCS directories (guard against accidental imports)
+.svn/
+.hg/
+CVS/
+
+# ============================================================
 # Logs
+# ============================================================
+
 *.log
 *.logs
 /logs/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-
-# ============================================================
-# Performance & profiling
-# ============================================================
-
-# Flamegraph output
-flamegraph.svg
-perf.data
-perf.data.old
-
-# Memory profiling
-*.heaptrack
-massif.out.*
-
-# ============================================================
-# Git & version control
-# ============================================================
-
-# Git patches
-*.patch
-*.diff
-
-# SVN (if legacy files exist)
-.svn/

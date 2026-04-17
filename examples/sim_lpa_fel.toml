@@ -1,0 +1,62 @@
+# =============================================================================
+# Laser-plasma driven free electron laser (LPA-FEL) — 25 nm EUV lithography
+# =============================================================================
+#
+# Models the BELLA/LBNL target configuration after the funded 500 MeV
+# electron-beam upgrade. The current demo at 100 MeV reached 420 nm with
+# 1 kHz bunch rate, feedback-stabilized for 8+ continuous hours; scaling
+# the electron energy to 500 MeV lands the fundamental resonance
+# wavelength in the 20-30 nm EUV band via
+#
+#     λ_r = (λ_u / 2γ²) (1 + K²/2)
+#
+# Reference: Kohrell et al., Phys. Rev. Accel. Beams, April 16 2026.
+# Coverage:  https://phys.org/news/2026-04-laser-plasma-free-electron-hours.html
+#
+# Run with:  highuvlith simulate --config examples/sim_lpa_fel.toml
+# -----------------------------------------------------------------------------
+
+[source]
+# Discriminator — selects LpaFelSource instead of the default VuvSource.
+# Omit this field (or set "vuv") for F2/Ar2 excimer configs.
+type = "lpa_fel"
+
+# Center wavelength in nm. BELLA 500 MeV target lands at ~25 nm.
+wavelength_nm = 25.0
+
+# Partial-coherence factor (outer sigma) for conventional illumination.
+# FEL output is already highly transverse-coherent; moderate sigma is fine.
+sigma = 0.7
+
+# Spectral bandwidth FWHM in picometers. FEL is narrow-band:
+#   SASE     Δλ/λ ~ 10⁻³  → ~25 pm at 25 nm
+#   Seeded   Δλ/λ ~ 10⁻⁴  → ~2.5 pm at 25 nm
+# 25 pm is a conservative choice representative of SASE output.
+bandwidth_pm = 25.0
+
+# FEL-specific fields (ignored when type = "vuv").
+electron_energy_mev = 500.0      # γ ≈ 979 at 500 MeV kinetic
+pulse_duration_fs   = 10.0       # femtosecond-scale coherent output
+rep_rate_hz         = 1000.0     # BELLA bunch rate
+# pulse_energy_uj   = 5.0        # optional; µJ-class per pulse
+
+[optics]
+# Projection lens NA. 0.55 is consistent with current EUV-class dry
+# lithography; higher-NA projection (0.75) is also viable at 25 nm
+# because zone-plate and Schwarzschild architectures remain tractable.
+na = 0.55
+flare_fraction = 0.02
+
+[mask]
+# Smaller CD than F2 configs: at ~6× shorter wavelength, ~6× smaller
+# features resolve at matched NA per Rayleigh's 0.61 λ/NA criterion.
+cd_nm    = 30.0
+pitch_nm = 100.0
+
+[grid]
+size     = 256
+pixel_nm = 1.0
+
+[process]
+dose_mj_cm2 = 30.0
+focus_nm    = 0.0

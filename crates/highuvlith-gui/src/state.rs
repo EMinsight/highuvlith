@@ -2,14 +2,22 @@ use highuvlith_core::aerial::AerialImageEngine;
 use highuvlith_core::mask::Mask;
 use highuvlith_core::metrics;
 use highuvlith_core::optics::ProjectionOptics;
-use highuvlith_core::source::{IlluminationShape, VuvSource};
+use highuvlith_core::source::{IlluminationShape, LpaFelSource, SourceKind, VuvSource};
 use highuvlith_core::types::GridConfig;
 use ndarray::Array2;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+/// Selects which concrete source type the GUI builds for simulation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SourceType {
+    Vuv,
+    LpaFel,
+}
+
 #[derive(Clone)]
 pub struct SimParams {
+    pub source_type: SourceType,
     pub wavelength_nm: f64,
     pub sigma: f64,
     pub na: f64,
@@ -17,11 +25,16 @@ pub struct SimParams {
     pub pitch_nm: f64,
     pub focus_nm: f64,
     pub grid_size: usize,
+    /// Electron beam energy in MeV. Used only when `source_type == LpaFel`.
+    pub electron_energy_mev: f64,
+    /// Pulse duration in fs. Used only when `source_type == LpaFel`.
+    pub pulse_duration_fs: f64,
 }
 
 impl Default for SimParams {
     fn default() -> Self {
         Self {
+            source_type: SourceType::Vuv,
             wavelength_nm: 157.63,
             sigma: 0.7,
             na: 0.75,
@@ -29,6 +42,8 @@ impl Default for SimParams {
             pitch_nm: 180.0,
             focus_nm: 0.0,
             grid_size: 128,
+            electron_energy_mev: 500.0,
+            pulse_duration_fs: 10.0,
         }
     }
 }
@@ -87,16 +102,33 @@ impl SimState {
         *error_ref.lock().unwrap() = None;
 
         thread::spawn(move || {
-            let source = VuvSource {
-                wavelength_nm: params.wavelength_nm,
-                bandwidth_pm: 1.1,
-                spectral_samples: 1,
-                spectral_shape: highuvlith_core::source::SpectralShape::Lorentzian,
-                pulse_energy_mj: 10.0,
-                rep_rate_hz: 4000.0,
-                illumination: IlluminationShape::Conventional {
-                    sigma: params.sigma,
-                },
+            let source: SourceKind = match params.source_type {
+                SourceType::Vuv => SourceKind::Vuv(VuvSource {
+                    wavelength_nm: params.wavelength_nm,
+                    bandwidth_pm: 1.1,
+                    spectral_samples: 1,
+                    spectral_shape: highuvlith_core::source::SpectralShape::Lorentzian,
+                    pulse_energy_mj: 10.0,
+                    rep_rate_hz: 4000.0,
+                    illumination: IlluminationShape::Conventional {
+                        sigma: params.sigma,
+                    },
+                }),
+                SourceType::LpaFel => {
+                    let mut fel = match LpaFelSource::new(params.wavelength_nm, params.sigma) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            *error_ref.lock().unwrap() =
+                                Some(format!("LPA-FEL parameter error: {}", e));
+                            *computing_ref.lock().unwrap() = false;
+                            return;
+                        }
+                    };
+                    fel.electron_energy_mev = params.electron_energy_mev;
+                    fel.pulse_duration_fs = params.pulse_duration_fs;
+                    fel.spectral_samples = 1;
+                    SourceKind::LpaFel(fel)
+                }
             };
             let optics = match ProjectionOptics::new(params.na) {
                 Ok(o) => o,

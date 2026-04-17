@@ -12,14 +12,30 @@ pub struct SimConfig {
     pub process: ProcessConfig,
 }
 
+/// Source configuration section of the TOML.
+///
+/// Back-compatible: if `type` is absent, it defaults to `"vuv"`, so
+/// existing configs that specify only `wavelength_nm`, `sigma`, and
+/// `bandwidth_pm` continue to work unchanged. Set `type = "lpa_fel"`
+/// to select the laser-plasma driven FEL source; the LPA-FEL-specific
+/// fields (`electron_energy_mev`, `pulse_duration_fs`, `rep_rate_hz`)
+/// are optional and default to BELLA-target values.
 #[derive(Debug, Deserialize)]
 pub struct SourceConfig {
+    #[serde(rename = "type", default = "default_source_type")]
+    pub source_type: String,
     #[serde(default = "default_wavelength")]
     pub wavelength_nm: f64,
     #[serde(default = "default_sigma")]
     pub sigma: f64,
     #[serde(default = "default_bandwidth")]
     pub bandwidth_pm: f64,
+    // LPA-FEL-specific fields. All optional; consulted only when
+    // `source_type == "lpa_fel"`.
+    pub electron_energy_mev: Option<f64>,
+    pub pulse_duration_fs: Option<f64>,
+    pub rep_rate_hz: Option<f64>,
+    pub pulse_energy_uj: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -54,6 +70,9 @@ pub struct ProcessConfig {
     pub focus_nm: f64,
 }
 
+fn default_source_type() -> String {
+    "vuv".to_string()
+}
 fn default_wavelength() -> f64 {
     157.63
 }
@@ -124,6 +143,13 @@ impl SimConfig {
         if self.source.sigma <= 0.0 || self.source.sigma > 1.0 {
             anyhow::bail!("sigma must be in (0, 1.0], got {}", self.source.sigma);
         }
+        match self.source.source_type.as_str() {
+            "vuv" | "lpa_fel" => {}
+            other => anyhow::bail!(
+                "unknown source type '{}' (expected 'vuv' or 'lpa_fel')",
+                other
+            ),
+        }
         if self.mask.cd_nm <= 0.0 {
             anyhow::bail!("cd_nm must be > 0, got {}", self.mask.cd_nm);
         }
@@ -146,17 +172,43 @@ impl SimConfig {
         Ok(())
     }
 
-    pub fn to_source(&self) -> highuvlith_core::source::VuvSource {
-        highuvlith_core::source::VuvSource {
-            wavelength_nm: self.source.wavelength_nm,
-            bandwidth_pm: self.source.bandwidth_pm,
-            spectral_samples: 5,
-            spectral_shape: highuvlith_core::source::SpectralShape::Lorentzian,
-            pulse_energy_mj: 10.0,
-            rep_rate_hz: 4000.0,
-            illumination: highuvlith_core::source::IlluminationShape::Conventional {
-                sigma: self.source.sigma,
-            },
+    pub fn to_source(&self) -> highuvlith_core::source::SourceKind {
+        use highuvlith_core::source::{
+            IlluminationShape, LpaFelSource, SourceKind, SpectralShape, VuvSource,
+        };
+        match self.source.source_type.as_str() {
+            "lpa_fel" => {
+                let mut fel = LpaFelSource::new(self.source.wavelength_nm, self.source.sigma)
+                    .unwrap_or_else(|_| {
+                        LpaFelSource::bella_target_25nm(self.source.sigma.clamp(0.05, 1.0))
+                            .expect("clamped sigma is valid")
+                    });
+                fel.bandwidth_pm = self.source.bandwidth_pm.max(0.0);
+                if let Some(e) = self.source.electron_energy_mev {
+                    fel.electron_energy_mev = e;
+                }
+                if let Some(tau) = self.source.pulse_duration_fs {
+                    fel.pulse_duration_fs = tau;
+                }
+                if let Some(rr) = self.source.rep_rate_hz {
+                    fel.rep_rate_hz = rr;
+                }
+                if let Some(pe) = self.source.pulse_energy_uj {
+                    fel.pulse_energy_uj = pe;
+                }
+                SourceKind::LpaFel(fel)
+            }
+            _ => SourceKind::Vuv(VuvSource {
+                wavelength_nm: self.source.wavelength_nm,
+                bandwidth_pm: self.source.bandwidth_pm,
+                spectral_samples: 5,
+                spectral_shape: SpectralShape::Lorentzian,
+                pulse_energy_mj: 10.0,
+                rep_rate_hz: self.source.rep_rate_hz.unwrap_or(4000.0),
+                illumination: IlluminationShape::Conventional {
+                    sigma: self.source.sigma,
+                },
+            }),
         }
     }
 
@@ -185,9 +237,14 @@ mod tests {
     fn valid_config() -> SimConfig {
         SimConfig {
             source: SourceConfig {
+                source_type: "vuv".to_string(),
                 wavelength_nm: 157.63,
                 sigma: 0.7,
                 bandwidth_pm: 1.1,
+                electron_energy_mev: None,
+                pulse_duration_fs: None,
+                rep_rate_hz: None,
+                pulse_energy_uj: None,
             },
             optics: OpticsConfig {
                 na: 0.75,
@@ -260,5 +317,84 @@ mod tests {
         let mut cfg = valid_config();
         cfg.grid.pixel_nm = 0.0;
         assert!(cfg.validate().is_err());
+    }
+
+    #[test]
+    fn test_unknown_source_type_rejected() {
+        let mut cfg = valid_config();
+        cfg.source.source_type = "synchrotron".to_string();
+        assert!(cfg.validate().is_err());
+    }
+
+    #[test]
+    fn test_lpa_fel_source_type_accepted() {
+        let mut cfg = valid_config();
+        cfg.source.source_type = "lpa_fel".to_string();
+        cfg.source.wavelength_nm = 25.0;
+        cfg.source.bandwidth_pm = 25.0;
+        cfg.source.electron_energy_mev = Some(500.0);
+        cfg.validate().unwrap();
+        let src = cfg.to_source();
+        assert!(matches!(
+            src,
+            highuvlith_core::source::SourceKind::LpaFel(_)
+        ));
+    }
+
+    #[test]
+    fn test_toml_back_compat_without_type_tag() {
+        let toml_str = r#"
+            [source]
+            wavelength_nm = 157.63
+            sigma = 0.7
+            bandwidth_pm = 1.1
+
+            [optics]
+            na = 0.75
+
+            [mask]
+            cd_nm = 65.0
+            pitch_nm = 180.0
+        "#;
+        let cfg: SimConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(cfg.source.source_type, "vuv");
+        cfg.validate().unwrap();
+        assert!(matches!(
+            cfg.to_source(),
+            highuvlith_core::source::SourceKind::Vuv(_)
+        ));
+    }
+
+    #[test]
+    fn test_toml_lpa_fel_parsing() {
+        let toml_str = r#"
+            [source]
+            type = "lpa_fel"
+            wavelength_nm = 25.0
+            sigma = 0.7
+            bandwidth_pm = 25.0
+            electron_energy_mev = 500.0
+            pulse_duration_fs = 10.0
+            rep_rate_hz = 1000.0
+
+            [optics]
+            na = 0.55
+
+            [mask]
+            cd_nm = 30.0
+            pitch_nm = 100.0
+        "#;
+        let cfg: SimConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(cfg.source.source_type, "lpa_fel");
+        assert_eq!(cfg.source.electron_energy_mev, Some(500.0));
+        cfg.validate().unwrap();
+        match cfg.to_source() {
+            highuvlith_core::source::SourceKind::LpaFel(s) => {
+                assert!((s.wavelength_nm - 25.0).abs() < 1e-9);
+                assert!((s.electron_energy_mev - 500.0).abs() < 1e-9);
+                assert!((s.pulse_duration_fs - 10.0).abs() < 1e-9);
+            }
+            _ => panic!("expected LpaFel variant"),
+        }
     }
 }

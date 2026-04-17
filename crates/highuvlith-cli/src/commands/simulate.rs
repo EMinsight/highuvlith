@@ -1,6 +1,7 @@
 use crate::config::SimConfig;
 use highuvlith_core::aerial::AerialImageEngine;
 use highuvlith_core::metrics;
+use highuvlith_core::source::LithographySource;
 use std::path::Path;
 
 pub fn run(
@@ -19,12 +20,10 @@ pub fn run(
     let focus = focus_override.unwrap_or(config.process.focus_nm);
 
     eprintln!(
-        "Source:  λ = {:.2} nm, σ = {:.2}",
-        source.wavelength_nm,
-        match &source.illumination {
-            highuvlith_core::source::IlluminationShape::Conventional { sigma } => *sigma,
-            _ => 0.0,
-        }
+        "Source:  λ = {:.2} nm, σ = {:.2} ({})",
+        source.wavelength_nm(),
+        source.sigma_outer().unwrap_or(0.0),
+        source.kind_label(),
     );
     eprintln!("Optics:  NA = {:.2}", optics.na);
     eprintln!(
@@ -60,7 +59,8 @@ pub fn run(
 
     if let Some(out_path) = output {
         let result = serde_json::json!({
-            "wavelength_nm": source.wavelength_nm,
+            "wavelength_nm": source.wavelength_nm(),
+            "source_type": source.kind_label(),
             "na": optics.na,
             "cd_nm": config.mask.cd_nm,
             "pitch_nm": config.mask.pitch_nm,

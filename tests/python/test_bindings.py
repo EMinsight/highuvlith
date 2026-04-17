@@ -36,6 +36,29 @@ class TestSourceConfig:
         with pytest.raises(ValueError):
             huv.SourceConfig(sigma_outer=1.5)
 
+    def test_lpa_fel_bella_25nm_defaults(self):
+        source = huv.SourceConfig.lpa_fel_bella_25nm()
+        assert abs(source.wavelength_nm - 25.0) < 1e-9
+        assert abs(source.sigma_outer - 0.7) < 1e-9
+        assert source.kind == "lpa_fel"
+        assert source.electron_energy_mev is not None
+        assert abs(source.electron_energy_mev - 500.0) < 1e-9
+        assert source.pulse_duration_fs is not None
+        assert abs(source.rep_rate_hz - 1000.0) < 1e-9
+
+    def test_lpa_fel_custom_wavelength(self):
+        source = huv.SourceConfig.lpa_fel(wavelength_nm=22.5, sigma=0.6)
+        assert abs(source.wavelength_nm - 22.5) < 1e-9
+        assert abs(source.sigma_outer - 0.6) < 1e-9
+        assert source.kind == "lpa_fel"
+
+    def test_vuv_has_no_fel_specific_fields(self):
+        source = huv.SourceConfig.f2_laser()
+        assert source.kind == "vuv"
+        assert source.electron_energy_mev is None
+        assert source.pulse_duration_fs is None
+        assert source.transverse_coherence_fraction is None
+
 
 class TestOpticsConfig:
     def test_default_getters(self):

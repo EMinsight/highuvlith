@@ -1,6 +1,7 @@
 use crate::config::SimConfig;
 use highuvlith_core::aerial::AerialImageEngine;
 use highuvlith_core::metrics;
+use highuvlith_core::source::LithographySource;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::path::Path;
 
@@ -101,7 +102,8 @@ pub fn run(
     if let Some(out_path) = output {
         let output_json = serde_json::json!({
             "config": {
-                "wavelength_nm": source.wavelength_nm,
+                "wavelength_nm": source.wavelength_nm(),
+                "source_type": source.kind_label(),
                 "na": optics.na,
                 "cd_nm": config.mask.cd_nm,
                 "pitch_nm": config.mask.pitch_nm,

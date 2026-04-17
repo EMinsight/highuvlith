@@ -3,15 +3,22 @@ use pyo3::prelude::*;
 use highuvlith_core::mask::Mask;
 use highuvlith_core::optics::ProjectionOptics;
 use highuvlith_core::resist::{DevelopmentModel, ResistParams};
-use highuvlith_core::source::{IlluminationShape, SpectralShape, VuvSource};
+use highuvlith_core::source::{
+    IlluminationShape, LithographySource, LpaFelSource, SourceKind, SpectralShape, VuvSource,
+};
 use highuvlith_core::thinfilm::{FilmLayer, FilmStack};
 use highuvlith_core::types::{Complex64, GridConfig};
 
-/// VUV laser source configuration.
+/// Illumination source configuration.
+///
+/// Wraps any concrete `LithographySource` variant (VUV excimer, LPA-FEL).
+/// Use the static factory methods (`f2_laser`, `ar2_laser`,
+/// `lpa_fel_bella_25nm`, `lpa_fel`) for preset configurations, or the
+/// default constructor for a custom VUV source.
 #[pyclass(name = "SourceConfig")]
 #[derive(Debug, Clone)]
 pub struct PySourceConfig {
-    pub inner: VuvSource,
+    pub inner: SourceKind,
 }
 
 #[pymethods]
@@ -49,7 +56,7 @@ impl PySourceConfig {
             )));
         }
         Ok(Self {
-            inner: VuvSource {
+            inner: SourceKind::Vuv(VuvSource {
                 wavelength_nm,
                 bandwidth_pm,
                 spectral_samples,
@@ -57,7 +64,7 @@ impl PySourceConfig {
                 pulse_energy_mj: 10.0,
                 rep_rate_hz: 4000.0,
                 illumination: IlluminationShape::Conventional { sigma: sigma_outer },
-            },
+            }),
         })
     }
 
@@ -67,7 +74,9 @@ impl PySourceConfig {
     fn f2_laser(sigma: f64) -> PyResult<Self> {
         let inner = VuvSource::f2_laser(sigma)
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-        Ok(Self { inner })
+        Ok(Self {
+            inner: SourceKind::Vuv(inner),
+        })
     }
 
     /// Create Ar2 excimer (126nm) source.
@@ -76,37 +85,159 @@ impl PySourceConfig {
     fn ar2_laser(sigma: f64) -> PyResult<Self> {
         let inner = VuvSource::ar2_laser(sigma)
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-        Ok(Self { inner })
+        Ok(Self {
+            inner: SourceKind::Vuv(inner),
+        })
+    }
+
+    /// Create an LPA-FEL source with the BELLA 500 MeV target config (~25 nm).
+    ///
+    /// Models the projected performance of the laser-plasma driven FEL
+    /// at LBNL BELLA (Kohrell et al., Phys. Rev. Accel. Beams, 2026)
+    /// after the funded electron-beam upgrade to 500 MeV.
+    #[staticmethod]
+    #[pyo3(signature = (sigma=0.7))]
+    fn lpa_fel_bella_25nm(sigma: f64) -> PyResult<Self> {
+        let inner = LpaFelSource::bella_target_25nm(sigma)
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+        Ok(Self {
+            inner: SourceKind::LpaFel(inner),
+        })
+    }
+
+    /// Create a custom LPA-FEL source at the given wavelength (nm).
+    /// Typically used for 20-30 nm EUV lithography studies; the
+    /// remaining FEL-specific parameters default to values consistent
+    /// with the BELLA architecture and can be overridden.
+    #[staticmethod]
+    #[pyo3(signature = (
+        wavelength_nm,
+        sigma=0.7,
+        electron_energy_mev=500.0,
+        bandwidth_pm=25.0,
+        pulse_duration_fs=10.0,
+        rep_rate_hz=1000.0,
+    ))]
+    fn lpa_fel(
+        wavelength_nm: f64,
+        sigma: f64,
+        electron_energy_mev: f64,
+        bandwidth_pm: f64,
+        pulse_duration_fs: f64,
+        rep_rate_hz: f64,
+    ) -> PyResult<Self> {
+        if bandwidth_pm < 0.0 {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "bandwidth_pm must be >= 0, got {}",
+                bandwidth_pm
+            )));
+        }
+        if electron_energy_mev <= 0.0 {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "electron_energy_mev must be positive, got {}",
+                electron_energy_mev
+            )));
+        }
+        if pulse_duration_fs <= 0.0 {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "pulse_duration_fs must be positive, got {}",
+                pulse_duration_fs
+            )));
+        }
+        if rep_rate_hz <= 0.0 {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "rep_rate_hz must be positive, got {}",
+                rep_rate_hz
+            )));
+        }
+        let mut inner = LpaFelSource::new(wavelength_nm, sigma)
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+        inner.electron_energy_mev = electron_energy_mev;
+        inner.bandwidth_pm = bandwidth_pm;
+        inner.pulse_duration_fs = pulse_duration_fs;
+        inner.rep_rate_hz = rep_rate_hz;
+        Ok(Self {
+            inner: SourceKind::LpaFel(inner),
+        })
     }
 
     #[getter]
     fn wavelength_nm(&self) -> f64 {
-        self.inner.wavelength_nm
+        self.inner.wavelength_nm()
     }
 
     #[getter]
     fn bandwidth_pm(&self) -> f64 {
-        self.inner.bandwidth_pm
+        self.inner.bandwidth_pm()
     }
 
     #[getter]
     fn sigma_outer(&self) -> f64 {
-        match &self.inner.illumination {
-            IlluminationShape::Conventional { sigma } => *sigma,
-            _ => 0.0,
-        }
+        self.inner.sigma_outer().unwrap_or(0.0)
     }
 
     #[getter]
     fn spectral_samples(&self) -> usize {
-        self.inner.spectral_samples
+        match &self.inner {
+            SourceKind::Vuv(s) => s.spectral_samples,
+            SourceKind::LpaFel(s) => s.spectral_samples,
+        }
+    }
+
+    /// Short label identifying the source family ("vuv" or "lpa_fel").
+    #[getter]
+    fn kind(&self) -> &'static str {
+        self.inner.kind_label()
+    }
+
+    /// Electron beam energy in MeV. Returns `None` for non-FEL sources.
+    #[getter]
+    fn electron_energy_mev(&self) -> Option<f64> {
+        match &self.inner {
+            SourceKind::LpaFel(s) => Some(s.electron_energy_mev),
+            SourceKind::Vuv(_) => None,
+        }
+    }
+
+    /// Pulse duration in femtoseconds. Returns `None` for non-FEL sources
+    /// (excimer pulse durations are nanosecond-scale and not modeled here).
+    #[getter]
+    fn pulse_duration_fs(&self) -> Option<f64> {
+        match &self.inner {
+            SourceKind::LpaFel(s) => Some(s.pulse_duration_fs),
+            SourceKind::Vuv(_) => None,
+        }
+    }
+
+    /// Bunch/pulse repetition rate in Hz. Defined for both source types.
+    #[getter]
+    fn rep_rate_hz(&self) -> f64 {
+        match &self.inner {
+            SourceKind::Vuv(s) => s.rep_rate_hz,
+            SourceKind::LpaFel(s) => s.rep_rate_hz,
+        }
+    }
+
+    /// Transverse coherence fraction in [0, 1]. Returns `None` for non-FEL sources.
+    #[getter]
+    fn transverse_coherence_fraction(&self) -> Option<f64> {
+        match &self.inner {
+            SourceKind::LpaFel(s) => Some(s.transverse_coherence_fraction),
+            SourceKind::Vuv(_) => None,
+        }
     }
 
     fn __repr__(&self) -> String {
-        format!(
-            "SourceConfig(wavelength_nm={}, sigma={:?})",
-            self.inner.wavelength_nm, self.inner.illumination
-        )
+        match &self.inner {
+            SourceKind::Vuv(s) => format!(
+                "SourceConfig(kind=vuv, wavelength_nm={}, illumination={:?})",
+                s.wavelength_nm, s.illumination
+            ),
+            SourceKind::LpaFel(s) => format!(
+                "SourceConfig(kind=lpa_fel, wavelength_nm={}, E_e={} MeV, tau={} fs)",
+                s.wavelength_nm, s.electron_energy_mev, s.pulse_duration_fs
+            ),
+        }
     }
 }
 

@@ -3,6 +3,7 @@ use pyo3::prelude::*;
 use highuvlith_core::aerial::AerialImageEngine;
 use highuvlith_core::metrics;
 use highuvlith_core::resist;
+use highuvlith_core::source::LithographySource;
 
 use crate::py_config::*;
 use crate::py_results::*;
@@ -168,7 +169,7 @@ impl PySimulationEngine {
     fn __repr__(&self) -> String {
         format!(
             "SimulationEngine(λ={}nm, NA={}, kernels={})",
-            self.source.inner.wavelength_nm,
+            self.source.inner.wavelength_nm(),
             self.optics.inner.na,
             self.engine.num_kernels()
         )

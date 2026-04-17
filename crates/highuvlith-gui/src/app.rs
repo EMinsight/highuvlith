@@ -1,4 +1,4 @@
-use crate::state::{SimResult, SimState};
+use crate::state::{SimResult, SimState, SourceType};
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
 
@@ -31,7 +31,7 @@ impl eframe::App for LithApp {
         egui::SidePanel::left("params_panel")
             .min_width(260.0)
             .show(ctx, |ui| {
-                ui.heading("VUV Lithography Simulator");
+                ui.heading("Highuvlith Lithography Simulator");
                 ui.separator();
                 self.draw_params(ui);
             });
@@ -57,9 +57,67 @@ impl LithApp {
             .default_open(true)
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
+                    ui.label("Type:");
+                    let prev_type = p.source_type;
+                    egui::ComboBox::from_id_salt("source_type_combo")
+                        .selected_text(match p.source_type {
+                            SourceType::Vuv => "VUV excimer",
+                            SourceType::LpaFel => "LPA-FEL (EUV)",
+                        })
+                        .show_ui(ui, |ui| {
+                            if ui
+                                .selectable_value(
+                                    &mut p.source_type,
+                                    SourceType::Vuv,
+                                    "VUV excimer",
+                                )
+                                .clicked()
+                                && prev_type != SourceType::Vuv
+                            {
+                                p.wavelength_nm = 157.63;
+                                p.sigma = 0.7;
+                            }
+                            if ui
+                                .selectable_value(
+                                    &mut p.source_type,
+                                    SourceType::LpaFel,
+                                    "LPA-FEL (EUV)",
+                                )
+                                .clicked()
+                                && prev_type != SourceType::LpaFel
+                            {
+                                p.wavelength_nm = 25.0;
+                                p.sigma = 0.7;
+                            }
+                        });
+                    if prev_type != p.source_type {
+                        changed = true;
+                    }
+                });
+
+                ui.horizontal(|ui| {
+                    ui.label("Preset:");
+                    if ui.button("F2 (157)").clicked() {
+                        p.source_type = SourceType::Vuv;
+                        p.wavelength_nm = 157.63;
+                        changed = true;
+                    }
+                    if ui.button("Ar2 (126)").clicked() {
+                        p.source_type = SourceType::Vuv;
+                        p.wavelength_nm = 126.0;
+                        changed = true;
+                    }
+                    if ui.button("LPA-FEL 25").clicked() {
+                        p.source_type = SourceType::LpaFel;
+                        p.wavelength_nm = 25.0;
+                        changed = true;
+                    }
+                });
+
+                ui.horizontal(|ui| {
                     ui.label("\u{03bb} (nm):");
                     changed |= ui
-                        .add(egui::Slider::new(&mut p.wavelength_nm, 120.0..=170.0).step_by(0.1))
+                        .add(egui::Slider::new(&mut p.wavelength_nm, 20.0..=170.0).step_by(0.1))
                         .changed();
                 });
                 ui.horizontal(|ui| {
@@ -68,6 +126,27 @@ impl LithApp {
                         .add(egui::Slider::new(&mut p.sigma, 0.1..=1.0).step_by(0.05))
                         .changed();
                 });
+
+                if p.source_type == SourceType::LpaFel {
+                    ui.horizontal(|ui| {
+                        ui.label("E_e (MeV):");
+                        changed |= ui
+                            .add(
+                                egui::Slider::new(&mut p.electron_energy_mev, 100.0..=600.0)
+                                    .step_by(10.0),
+                            )
+                            .changed();
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("\u{03c4} (fs):");
+                        changed |= ui
+                            .add(
+                                egui::Slider::new(&mut p.pulse_duration_fs, 5.0..=50.0)
+                                    .step_by(1.0),
+                            )
+                            .changed();
+                    });
+                }
             });
 
         egui::CollapsingHeader::new("Optics")
